@@ -160,6 +160,38 @@ python start_bot.py
 | `/admin_add_user` | Добавить пользователя (админ) | Админ |
 | `/admin_list_users` | Список пользователей (админ) | Админ |
 
+## Деплой на Render
+
+В репозитории есть `render.yaml` (Blueprint) и `Procfile`.
+
+Деплой: **New → Blueprint → выбрать репозиторий**.
+
+Настройки web-сервиса:
+- Runtime: Python
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `gunicorn run_server:app --bind 0.0.0.0:$PORT`
+
+Переменные окружения (дублируют `.env`): `SECRET_KEY`, `SCHEDULE_ICS_URL`, `DEFAULT_GROUP`,
+`ADMIN_USERNAME`, `ADMIN_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_ID`.
+
+### ⚠️ Подводные камни
+
+1. **SQLite не переживёт рестарт** — диск Render эфемерный. Варианты:
+   - подключить Postgres и задать `DATABASE_URL` (код уже поддерживает postgres://);
+   - либо Render Disk + `SCHEDULE_DB_PATH=/var/data/schedule.db`.
+2. **DDoS-Guard требует РФ-IP** — серверы Render не в России, `schedule.sevsu.ru` вернёт 403. Варианты:
+   - задать `SCHEDULE_PROXY=<российский прокси>` (updater пойдёт через него);
+   - либо держать `start_scheduler.py` на российской машине;
+   - либо заливать `.ics` вручную (`python parse_now.py --input data/schedule.ics --reset`).
+3. **Telegram, наоборот, доступен с зарубежного IP** — бота логичнее держать на Render
+   (Background Worker: `python start_bot.py`), а для РФ-сервера задать `TELEGRAM_PROXY`.
+
+### Рекомендуемая схема
+
+- **РФ-машина / VPS**: `start_scheduler.py` (обновление расписания) + БД.
+- **Render**: сайт (`gunicorn`) и/или Telegram-бот.
+- Либо всё на одном российском VPS, но боту задать `TELEGRAM_PROXY`.
+
 ## Структура проекта
 
 ```

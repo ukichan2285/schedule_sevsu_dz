@@ -26,7 +26,11 @@ def fetch_ics(url=None, timeout=25):
 
     s = requests.Session()
     s.trust_env = False
-    s.proxies = {'http': None, 'https': None}
+    if config.SCHEDULE_PROXY:
+        # Ходим через прокси (например, российский), игнорируя системные
+        s.proxies = {'http': config.SCHEDULE_PROXY, 'https': config.SCHEDULE_PROXY}
+    else:
+        s.proxies = {'http': None, 'https': None}
     s.headers.update({
         'User-Agent': USER_AGENT,
         'Accept-Language': 'ru-RU,ru;q=0.9',
@@ -144,3 +148,8 @@ def run_update(url=None, weeks_ahead=None, record_changes=True):
         return {'ok': False, 'error': str(e)}
     finally:
         session.close()
+
+
+if __name__ == '__main__':
+    import json
+    print(json.dumps(run_update(), ensure_ascii=False, default=str))

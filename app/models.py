@@ -1,36 +1,66 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Date, ForeignKey, Boolean, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Date, ForeignKey, Boolean, text, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
 import os
 
+from app import config
+
 Base = declarative_base()
 
-# Путь к базе данных
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'schedule.db')
-DATABASE_URL = f'sqlite:///{DATABASE_PATH}'
 
-# Создание движка и сессии
-engine = create_engine(DATABASE_URL, echo=False)
+def _resolve_db_url():
+    """DATABASE_URL (Postgres/Render) или SQLite-файл."""
+    url = (config.DATABASE_URL or '').strip()
+    if url:
+        # Render отдаёт postgres://, SQLAlchemy хочет postgresql://
+        if url.startswith('postgres://'):
+            url = url.replace('postgres://', 'postgresql://', 1)
+        return url
+
+    path = (config.SCHEDULE_DB_PATH or '').strip()
+    if not path:
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            'data', 'schedule.db')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return f'sqlite:///{path}'
+
+
+DATABASE_URL = _resolve_db_url()
+
+# SQLite в связке с потоками (gunicorn) требует check_same_thread=False
+if DATABASE_URL.startswith('sqlite'):
+    engine = create_engine(DATABASE_URL, echo=False,
+                           connect_args={'check_same_thread': False})
+else:
+    engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+
 Session = sessionmaker(bind=engine)
+
 
 def init_db():
     """Инициализация базы данных"""
     Base.metadata.create_all(engine)
     migrate()
 
-def migrate():
-    """Небольшие миграции для уже существующей SQLite-базы."""
-    with engine.connect() as conn:
-        cols = [row[1] for row in conn.execute(text('PRAGMA table_info(schedule)'))]
-        if 'period_start' not in cols:
-            conn.execute(text('ALTER TABLE schedule ADD COLUMN period_start DATE'))
-            conn.commit()
 
-        ucols = [row[1] for row in conn.execute(text('PRAGMA table_info(users)'))]
-        if 'password_hash' not in ucols:
-            conn.execute(text('ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)'))
-            conn.commit()
+def migrate():
+    """Добавить недостающие колонки (работает и в SQLite, и в PostgreSQL)."""
+    insp = inspect(engine)
+    tables = insp.get_table_names()
+
+    def ensure_column(table, column, ddl):
+        if table not in tables:
+            return
+        cols = [c['name'] for c in insp.get_columns(table)]
+        if column not in cols:
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+
+    ensure_column('schedule', 'period_start',
+                  'ALTER TABLE schedule ADD COLUMN period_start DATE')
+    ensure_column('users', 'password_hash',
+                  'ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)')
 
 
 class User(Base):

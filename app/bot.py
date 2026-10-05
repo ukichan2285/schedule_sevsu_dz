@@ -12,7 +12,12 @@ class ScheduleBot:
         self.application = None
     
     def create_application(self):
-        self.application = Application.builder().token(self.token).build()
+        from app import config
+        builder = Application.builder().token(self.token)
+        if config.TELEGRAM_PROXY:
+            # Telegram недоступен напрямую (например, из РФ) — идём через прокси
+            builder = builder.proxy(config.TELEGRAM_PROXY).get_updates_proxy(config.TELEGRAM_PROXY)
+        self.application = builder.build()
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(CommandHandler("get_schedule", self.get_schedule))
