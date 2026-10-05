@@ -20,6 +20,11 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 git add .
+if git diff --cached --name-only | grep -qE '(^|/)(\.env|\.token|\.database)$'; then
+  echo "❌ В коммит попали секреты (.env/.token/.database) — прерываю push"
+  git reset -q
+  exit 1
+fi
 git commit -m "${1:-update}" || echo "нечего коммитить"
 
 git remote remove origin 2>/dev/null || true

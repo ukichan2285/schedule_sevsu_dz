@@ -179,6 +179,12 @@ gunicorn достаточно — отдельный запуск `run.py` не 
 1. **Постоянная БД.** Диск Render эфемерный — SQLite обнулится при рестарте.
    Создайте бесплатный Postgres (Neon / Supabase / Render) и положите строку
    подключения в `DATABASE_URL`. Без этого данные и админ будут теряться.
+
+   **Supabase:** у него «Direct connection» работает по **IPv6**, а Render — IPv4-only.
+   Берите строку **Session pooler** (она IPv4): Connect → Session pooler →
+   `postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require`.
+   Пароль с символами `@ & # ?` нужно percent-encode (`@` → `%40`). Ту же строку
+   используйте на РФ-машине — тогда сайт на Render и планировщик смотрят в одну базу.
 2. **Render → New → Blueprint** → репозиторий `ukichan2285/schedule_sevsu_dz`.
    Render прочитает `render.yaml` и создаст два web-сервиса:
    `schedule-sevsu` (сайт) и `schedule-sevsu-bot` (бот).

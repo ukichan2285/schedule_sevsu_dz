@@ -17,6 +17,9 @@ def _resolve_db_url():
         # Render отдаёт postgres://, SQLAlchemy хочет postgresql://
         if url.startswith('postgres://'):
             url = url.replace('postgres://', 'postgresql://', 1)
+        # SQLAlchemy 2.1+ по умолчанию использует psycopg3 — фиксируем драйвер явно
+        if url.startswith('postgresql://'):
+            url = url.replace('postgresql://', 'postgresql+psycopg://', 1)
         return url
 
     path = (config.SCHEDULE_DB_PATH or '').strip()

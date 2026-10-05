@@ -1,6 +1,8 @@
 # ─── Секреты ───
 .token
 .env
+.database
+*.database
 
 # ─── Python ───
 venv/
