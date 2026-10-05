@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="text-center mb-3">Расписание на неделю</h2>
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <a href="/week?offset={{ offset - 1 }}" class="btn btn-outline-secondary">
+                <i class="bi bi-chevron-left"></i> Пред. неделя
+            </a>
+            <div class="text-center">
+                <div class="fw-bold">{{ monday.strftime('%d.%m.%Y') }} — {{ week_dates[-1][1].strftime('%d.%m.%Y') }}</div>
+                {% if offset == 0 %}<span class="badge bg-success">Текущая неделя</span>{% endif %}
+                {% if offset != 0 %}<a href="/week" class="small">к текущей</a>{% endif %}
+            </div>
+            <a href="/week?offset={{ offset + 1 }}" class="btn btn-outline-secondary">
+                След. неделя <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
+
+        {% for day, date in week_dates %}
+        {% set day_lessons = schedule[day] %}
+        {% if day_lessons %}
+        <div class="day-header d-flex justify-content-between">
+            <h3 class="mb-0">{{ day }}</h3>
+            <span class="opacity-75">{{ date.strftime('%d.%m') }}</span>
+        </div>
+        <div class="row">
+            {% for lesson in day_lessons %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card lesson-card h-100 {% if date == today %}border-success border-2{% endif %}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="lesson-number">{{ lesson.lesson_number }} пара</span>
+                            <span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span>
+                        </div>
+                        <h5 class="subject mb-2">{{ lesson.subject }}</h5>
+                        {% if lesson.teacher %}
+                        <p class="teacher mb-1"><i class="bi bi-person-badge"></i> {{ lesson.teacher }}</p>
+                        {% endif %}
+                        {% if lesson.location %}
+                        <p class="location mb-2"><i class="bi bi-geo-alt"></i> {{ lesson.location }}</p>
+                        {% endif %}
+
+                        {% if lesson.homework %}
+                        <div class="homework-box">
+                            <small class="text-muted"><i class="bi bi-card-text"></i> ДЗ:</small>
+                            <p class="mb-0 fw-bold">{{ lesson.homework.text }}</p>
+                        </div>
+                        {% else %}
+                        <form method="POST" action="/set_homework" class="mt-2">
+                            <input type="hidden" name="schedule_id" value="{{ lesson.id }}">
+                            <input type="hidden" name="next" value="{{ request.full_path }}">
+                            <div class="input-group">
+                                <input type="text" name="homework" class="form-control form-control-sm" placeholder="Добавить ДЗ">
+                                <button type="submit" class="btn btn-sm btn-outline-primary">+</button>
+                            </div>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+
+        {% if not has_lessons %}
+        <div class="alert alert-warning text-center">
+            <i class="bi bi-exclamation-triangle"></i> Расписание на эту неделю отсутствует.
+            <a href="/update_schedule?next={{ request.full_path }}">Обновить расписание</a>
+        </div>
+        {% endif %}
+
+        <div class="text-center mt-4">
+            <a href="/" class="btn btn-secondary"><i class="bi bi-calendar-day"></i> Сегодня</a>
+            <a href="/update_schedule?next={{ request.full_path }}" class="btn btn-success">
+                <i class="bi bi-arrow-repeat"></i> Обновить расписание
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

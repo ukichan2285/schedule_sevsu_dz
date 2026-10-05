@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="text-center mb-4">Изменения расписания</h2>
+
+        {% if changes %}
+            {% for c in changes %}
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between">
+                    <span><i class="bi bi-clock-history"></i> Изменение</span>
+                    <span class="text-muted">
+                        {{ c.detected_at.strftime('%d.%m.%Y %H:%M') if c.detected_at else '—' }}
+                    </span>
+                </div>
+                <div class="card-body">
+                    <pre class="mb-0" style="white-space: pre-wrap;">{{ c.changes }}</pre>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+        <div class="alert alert-info text-center">
+            <i class="bi bi-info-circle"></i> Изменений пока не обнаружено.
+        </div>
+        {% endif %}
+
+        <div class="text-center mt-4">
+            <a href="/update_schedule?next=/changes" class="btn btn-success">
+                <i class="bi bi-arrow-repeat"></i> Проверить изменения
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

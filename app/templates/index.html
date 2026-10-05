@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="text-center mb-4">Расписание на {{ today }}</h2>
+        
+        {% if lessons %}
+        <div class="row">
+            {% for lesson in lessons %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card lesson-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="lesson-number">{{ lesson.lesson_number }} пара</span>
+                            <span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span>
+                        </div>
+                        
+                        <h5 class="subject mb-2">{{ lesson.subject }}</h5>
+                        
+                        {% if lesson.teacher %}
+                        <p class="teacher mb-1"><i class="bi bi-person-badge"></i> {{ lesson.teacher }}</p>
+                        {% endif %}
+                        
+                        {% if lesson.location %}
+                        <p class="location mb-2"><i class="bi bi-geo-alt"></i> {{ lesson.location }}</p>
+                        {% endif %}
+                        
+                        {% if lesson.homework %}
+                        <div class="homework-box">
+                            <small class="text-muted"><i class="bi bi-card-text"></i> Домашнее задание:</small>
+                            <p class="mb-0 fw-bold">{{ lesson.homework.text }}</p>
+                        </div>
+                        {% else %}
+                        <form method="POST" action="/set_homework" class="mt-2">
+                            <input type="hidden" name="schedule_id" value="{{ lesson.id }}">
+                            <input type="hidden" name="next" value="/">
+                            <div class="input-group">
+                                <input type="text" name="homework" class="form-control form-control-sm" placeholder="Добавить ДЗ">
+                                <button type="submit" class="btn btn-sm btn-outline-primary">+</button>
+                            </div>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info text-center">
+            <i class="bi bi-info-circle"></i> Расписание на сегодня отсутствует
+        </div>
+        {% endif %}
+        
+        <div class="text-center mt-4">
+            <a href="/week" class="btn btn-secondary"><i class="bi bi-calendar-week"></i> Смотреть неделю</a>
+            <a href="/update_schedule" class="btn btn-success"><i class="bi bi-arrow-repeat"></i> Обновить расписание</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

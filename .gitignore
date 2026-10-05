@@ -1,0 +1,31 @@
+# ─── Секреты ───
+.token
+.env
+
+# ─── Python ───
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# ─── Данные (генерируются) ───
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/*.ics
+data/*.json
+data/group_*.html
+data/lessons_*.json
+*.log
+
+# ─── Загрузки (ДЗ, фото) ───
+uploads/
+instance/
+
+# ─── OS / IDE ───
+.DS_Store
+.idea/
+.vscode/
