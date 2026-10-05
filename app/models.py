@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Date, ForeignKey, Boolean, text, inspect
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Text, DateTime, Date, ForeignKey, Boolean, text, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
@@ -106,7 +106,7 @@ def ensure_admin():
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True)  # NULL — для пользователей, созданных в вебе/боте
+    telegram_id = Column(BigInteger, unique=True)  # NULL — для пользователей, созданных в вебе/боте
     username = Column(String(100), unique=True)
     first_name = Column(String(100))
     last_name = Column(String(100))
