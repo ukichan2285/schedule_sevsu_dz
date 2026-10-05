@@ -27,19 +27,43 @@ def migrate():
             conn.execute(text('ALTER TABLE schedule ADD COLUMN period_start DATE'))
             conn.commit()
 
+        ucols = [row[1] for row in conn.execute(text('PRAGMA table_info(users)'))]
+        if 'password_hash' not in ucols:
+            conn.execute(text('ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)'))
+            conn.commit()
+
 
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
     telegram_id = Column(Integer, unique=True, nullable=False)
-    username = Column(String(100))
+    username = Column(String(100), unique=True)
     first_name = Column(String(100))
     last_name = Column(String(100))
+    password_hash = Column(String(255))
     role = Column(String(20), default='user')
     created_at = Column(DateTime)
     is_active = Column(Boolean, default=True)
     homework_assignments = relationship('Homework', back_populates='author')
-    
+
+    def set_password(self, password):
+        from werkzeug.security import generate_password_hash
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        from werkzeug.security import check_password_hash
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, password)
+
+    @property
+    def is_admin(self):
+        return self.role == 'admin'
+
+    @property
+    def display_name(self):
+        return self.username or self.first_name or f'user{self.id}'
+
     def to_dict(self):
         return {'id': self.id, 'telegram_id': self.telegram_id, 'username': self.username, 'role': self.role, 'is_active': self.is_active}
 

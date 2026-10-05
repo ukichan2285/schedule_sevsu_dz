@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0"><i class="bi bi-card-text"></i> Домашние задания</h2>
+    <a href="/admin" class="btn btn-outline-secondary btn-sm">← В панель</a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <a href="/admin/homework?offset={{ offset - 1 }}" class="btn btn-outline-secondary btn-sm">← Пред.</a>
+    <div>
+        {{ monday.strftime('%d.%m.%Y') }} — {{ week_end.strftime('%d.%m.%Y') }}
+        {% if offset == 0 %}<span class="badge bg-success ms-2">текущая</span>{% endif %}
+        {% if offset != 0 %}<a href="/admin/homework" class="ms-2 small">к текущей</a>{% endif %}
+    </div>
+    <a href="/admin/homework?offset={{ offset + 1 }}" class="btn btn-outline-secondary btn-sm">След. →</a>
+</div>
+
+{% for day in days %}
+{% set lessons = by_day[day] %}
+{% if lessons %}
+<h5 class="text-primary mt-3">{{ day }}</h5>
+{% for lesson in lessons %}
+<div class="card mb-2">
+    <div class="card-body py-2">
+        <div class="d-flex justify-content-between">
+            <div>
+                <strong>п.{{ lesson.lesson_number }}</strong> {{ lesson.subject }}
+                {% if lesson.teacher %}<span class="text-muted small">· {{ lesson.teacher }}</span>{% endif %}
+            </div>
+            {% if lesson.homework_text %}<span class="badge bg-warning text-dark">ДЗ есть</span>{% endif %}
+        </div>
+        <form method="POST" action="/admin/homework/save" class="input-group input-group-sm mt-2">
+            <input type="hidden" name="schedule_id" value="{{ lesson.id }}">
+            <input type="hidden" name="next" value="/admin/homework?offset={{ offset }}">
+            <input type="text" name="text" class="form-control"
+                   value="{{ lesson.homework_text }}" placeholder="Текст ДЗ (пусто = удалить)">
+            <button class="btn btn-primary">Сохранить</button>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% if not has_lessons %}
+<div class="alert alert-info text-center">На эту неделю занятий нет.</div>
+{% endif %}
+{% endblock %}

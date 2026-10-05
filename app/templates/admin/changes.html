@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-clock-history"></i> Журнал изменений</h2>
+    <a href="/admin" class="btn btn-outline-secondary btn-sm">← В панель</a>
+</div>
+
+{% if changes %}
+    {% for c in changes %}
+    <div class="card mb-2">
+        <div class="card-header py-2 d-flex justify-content-between">
+            <span>Изменение №{{ loop.index }}</span>
+            <span class="text-muted small">
+                {{ c.detected_at.strftime('%d.%m.%Y %H:%M') if c.detected_at else '—' }}
+            </span>
+        </div>
+        <div class="card-body py-2">
+            <pre class="mb-0" style="white-space: pre-wrap;">{{ c.changes }}</pre>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+<div class="alert alert-info text-center">Изменений пока не обнаружено.</div>
+{% endif %}
+
+<div class="text-center mt-4">
+    <a href="/update_schedule?next=/admin/changes" class="btn btn-success">
+        <i class="bi bi-arrow-repeat"></i> Проверить изменения
+    </a>
+</div>
+{% endblock %}

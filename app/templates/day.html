@@ -30,7 +30,7 @@
                             <small class="text-muted"><i class="bi bi-card-text"></i> ДЗ:</small>
                             <p class="mb-0 fw-bold">{{ lesson.homework.text }}</p>
                         </div>
-                        {% else %}
+                        {% elif session.get('user_id') %}
                         <form method="POST" action="/set_homework" class="mt-2">
                             <input type="hidden" name="schedule_id" value="{{ lesson.id }}">
                             <input type="hidden" name="next" value="{{ request.full_path }}">

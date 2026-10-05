@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="mb-4"><i class="bi bi-speedometer2"></i> Админ-панель</h2>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100"><div class="card-body">
+            <div class="fs-2 fw-bold">{{ stats.users }}</div>
+            <div class="text-muted">Пользователи</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100"><div class="card-body">
+            <div class="fs-2 fw-bold">{{ stats.lessons }}</div>
+            <div class="text-muted">Занятия</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100"><div class="card-body">
+            <div class="fs-2 fw-bold">{{ stats.homework }}</div>
+            <div class="text-muted">ДЗ</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100"><div class="card-body">
+            <div class="fs-2 fw-bold">{{ stats.changes }}</div>
+            <div class="text-muted">Изменения</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="list-group">
+    <a href="/admin/users" class="list-group-item list-group-item-action">
+        <i class="bi bi-people"></i> Пользователи — создание аккаунтов, роли, пароли
+    </a>
+    <a href="/admin/homework" class="list-group-item list-group-item-action">
+        <i class="bi bi-card-text"></i> Домашние задания — добавить/изменить
+    </a>
+    <a href="/admin/changes" class="list-group-item list-group-item-action">
+        <i class="bi bi-clock-history"></i> Журнал изменений расписания
+    </a>
+    <a href="/update_schedule?next=/admin" class="list-group-item list-group-item-action">
+        <i class="bi bi-arrow-repeat"></i> Обновить расписание из календаря
+    </a>
+</div>
+{% endblock %}

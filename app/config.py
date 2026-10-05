@@ -30,3 +30,8 @@ SECRET_KEY = _get('SECRET_KEY', 'dev-secret-change-me')
 # Telegram
 TELEGRAM_BOT_TOKEN = _get('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_ADMIN_ID = _get('TELEGRAM_ADMIN_ID', '')
+
+# Первый администратор (создаётся run.py)
+ADMIN_USERNAME = _get('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = _get('ADMIN_PASSWORD', 'admin123')
+ADMIN_TELEGRAM_ID = int(_get('ADMIN_TELEGRAM_ID', '8887484529'))

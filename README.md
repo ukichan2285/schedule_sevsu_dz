@@ -115,6 +115,32 @@ python run_server.py
 flask run --host=0.0.0.0 --port=80
 ```
 
+### Автообновление расписания
+
+```bash
+source venv/bin/activate
+python start_scheduler.py
+```
+
+Каждые `UPDATE_INTERVAL_MINUTES` минут (по умолчанию 30) скачивает `.ics`-календарь,
+сравнивает с базой и записывает изменения в журнал.
+
+### Админ-панель
+
+Адрес входа: http://127.0.0.1:5000/login
+
+Первый администратор создаётся `run.py`:
+- логин — `ADMIN_USERNAME` (по умолчанию `admin`)
+- пароль — `ADMIN_PASSWORD` (по умолчанию `admin123`) — **смените!**
+
+Разделы (`/admin`):
+- **Пользователи** (`/admin/users`) — создание аккаунтов, роли, пароли, блокировка
+- **Домашние задания** (`/admin/homework`) — добавление/изменение/удаление ДЗ
+- **Журнал изменений** (`/admin/changes`) — история автообновлений
+- **Обновить расписание** — принудительное обновление
+
+Пользователи с ролью `user` могут редактировать ДЗ, но не управлять пользователями.
+
 ### Запуск бота
 
 ```bash
@@ -139,16 +165,23 @@ python start_bot.py
 ```
 shedule_sevsu/
 ├── app/
-│   ├── __init__.py
+│   ├── __init__.py     # Создание Flask-приложения
+│   ├── admin.py        # Админ-панель (вход, пользователи, ДЗ)
 │   ├── bot.py          # Telegram бот
+│   ├── config.py       # Конфигурация из .env
+│   ├── ics_parser.py   # Разбор .ics-календаря
 │   ├── models.py       # Модели SQLAlchemy
-│   └── parser.py       # Парсер расписания
-├── data/
-│   └── schedule.db     # База данных
-├── venv/               # Виртуальное окружение
-├── run.py              # Инициализация БД
-├── start_bot.py        # Запуск бота
-├── requirements.txt    # Зависимости
+│   ├── routes.py       # Публичные страницы + JSON API
+│   ├── updater.py      # Автообновление расписания
+│   └── parser.py       # Старый HTML-парсер (не используется)
+├── data/               # БД, скачанные .ics (не в git)
+├── run.py              # Инициализация БД + админ
+├── run_server.py       # Запуск сайта
+├── start_bot.py        # Запуск Telegram-бота
+├── start_scheduler.py  # Автообновление расписания
+├── parse_now.py        # Ручной импорт .ics/.json/.html
+├── git_push.sh         # Хелпер для push в GitHub
+├── requirements.txt
 └── README.md
 ```
 

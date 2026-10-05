@@ -46,6 +46,18 @@
                     <li class="nav-item">
                         <a class="nav-link" href="https://schedule.sevsu.ru" target="_blank"><i class="bi bi-box-arrow-up-right"></i> Оригинал</a>
                     </li>
+                    {% if session.get('user_id') %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin"><i class="bi bi-gear"></i> Панель</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout"><i class="bi bi-box-arrow-right"></i> Выйти</a>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/login"><i class="bi bi-box-arrow-in-right"></i> Войти</a>
+                    </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>
