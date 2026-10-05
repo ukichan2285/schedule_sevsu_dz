@@ -34,7 +34,7 @@ SCHEDULE_DB_PATH = _get('SCHEDULE_DB_PATH', '')
 SECRET_KEY = _get('SECRET_KEY', 'dev-secret-change-me')
 # Для продакшена на Render/любом хостинге
 PORT = int(_get('PORT', '5000'))
-FLASK_DEBUG = _get('FLASK_DEBUG', '1') == '1'
+FLASK_DEBUG = _get('FLASK_DEBUG', '0') == '1'
 
 # Telegram
 TELEGRAM_BOT_TOKEN = _get('TELEGRAM_BOT_TOKEN', '')

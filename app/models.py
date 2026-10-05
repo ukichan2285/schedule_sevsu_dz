@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Date, ForeignKey, Boolean, text, inspect
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
@@ -63,10 +64,46 @@ def migrate():
                   'ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)')
 
 
+def ensure_admin():
+    """Создать/обновить первого администратора. Идемпотентно и потокобезопасно.
+
+    Вызывается при старте приложения (в т.ч. gunicorn на Render), а не только
+    из run.py. При нескольких воркерах возможна гонка — ловим IntegrityError.
+    """
+    from datetime import datetime
+    session = Session()
+    try:
+        user = session.query(User).filter(User.username == config.ADMIN_USERNAME).first()
+        if user is None:
+            user = User(
+                telegram_id=config.ADMIN_TELEGRAM_ID,
+                username=config.ADMIN_USERNAME,
+                role='admin',
+                created_at=datetime.now(),
+                is_active=True,
+            )
+            user.set_password(config.ADMIN_PASSWORD)
+            session.add(user)
+            try:
+                session.commit()
+                print(f'✅ Админ создан: {config.ADMIN_USERNAME}')
+            except IntegrityError:
+                session.rollback()
+        else:
+            user.role = 'admin'
+            user.is_active = True
+            if not user.password_hash:
+                user.set_password(config.ADMIN_PASSWORD)
+                session.commit()
+                print(f'✅ Админу {config.ADMIN_USERNAME} установлен пароль')
+    finally:
+        session.close()
+
+
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True, nullable=False)
+    telegram_id = Column(Integer, unique=True)  # NULL — для пользователей, созданных в вебе/боте
     username = Column(String(100), unique=True)
     first_name = Column(String(100))
     last_name = Column(String(100))

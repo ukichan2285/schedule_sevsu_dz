@@ -1,5 +1,5 @@
 from flask import Flask
-from app.models import init_db
+from app.models import init_db, ensure_admin
 from app import config
 
 
@@ -9,6 +9,9 @@ def create_app():
 
     # Инициализация БД + миграции
     init_db()
+
+    # Первый администратор создаётся при старте (важно для gunicorn/Render)
+    ensure_admin()
 
     # Регистрация blueprint'ов
     from app.routes import main

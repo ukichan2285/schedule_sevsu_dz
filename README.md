@@ -162,35 +162,55 @@ python start_bot.py
 
 ## Деплой на Render
 
-В репозитории есть `render.yaml` (Blueprint) и `Procfile`.
+Код готов к Render: есть `render.yaml` (Blueprint), `Procfile` и `.python-version`.
+Админ создаётся автоматически при старте (`create_app()` → `ensure_admin()`), поэтому
+gunicorn достаточно — отдельный запуск `run.py` не нужен.
 
-Деплой: **New → Blueprint → выбрать репозиторий**.
+### Что заработает на Render, а что нет
 
-Настройки web-сервиса:
-- Runtime: Python
-- Build Command: `pip install -r requirements.txt`
-- Start Command: `gunicorn run_server:app --bind 0.0.0.0:$PORT`
+| Сервис | Render | Почему |
+|--------|--------|--------|
+| Сайт (Flask) | ✅ | обычный web-сервис |
+| Telegram-бот | ✅ | `api.telegram.org` доступен с US-IP |
+| Обновление расписания | ❌ | DDoS-Guard отдаёт 403 с не-РФ IP |
 
-Переменные окружения (дублируют `.env`): `SECRET_KEY`, `SCHEDULE_ICS_URL`, `DEFAULT_GROUP`,
-`ADMIN_USERNAME`, `ADMIN_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_ID`.
+### Шаг за шагом
 
-### ⚠️ Подводные камни
+1. **Постоянная БД.** Диск Render эфемерный — SQLite обнулится при рестарте.
+   Создайте бесплатный Postgres (Neon / Supabase / Render) и положите строку
+   подключения в `DATABASE_URL`. Без этого данные и админ будут теряться.
+2. **Render → New → Blueprint** → репозиторий `ukichan2285/schedule_sevsu_dz`.
+   Render прочитает `render.yaml` и создаст два web-сервиса:
+   `schedule-sevsu` (сайт) и `schedule-sevsu-bot` (бот).
+3. **Заполните переменные** (группа `schedule-sevsu`): `SCHEDULE_ICS_URL`,
+   `DEFAULT_GROUP`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `TELEGRAM_BOT_TOKEN`,
+   `TELEGRAM_ADMIN_ID`, `DATABASE_URL`. `SECRET_KEY` генерируется автоматически.
+4. **Обновление расписания** оставьте на российской машине. Она должна смотреть в
+   **тот же `DATABASE_URL`**, что и Render, — тогда сайт показывает свежие данные:
+   ```bash
+   # на РФ-машине
+   export DATABASE_URL='postgresql://...'   # тот же, что на Render
+   python update_once.py                    # разово
+   python start_scheduler.py                # или постоянно
+   ```
+   Альтернатива без РФ-машины: задать `SCHEDULE_PROXY` (российский прокси) на Render.
+5. Откройте сайт → **/login** → войдите под `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
 
-1. **SQLite не переживёт рестарт** — диск Render эфемерный. Варианты:
-   - подключить Postgres и задать `DATABASE_URL` (код уже поддерживает postgres://);
-   - либо Render Disk + `SCHEDULE_DB_PATH=/var/data/schedule.db`.
-2. **DDoS-Guard требует РФ-IP** — серверы Render не в России, `schedule.sevsu.ru` вернёт 403. Варианты:
-   - задать `SCHEDULE_PROXY=<российский прокси>` (updater пойдёт через него);
-   - либо держать `start_scheduler.py` на российской машине;
-   - либо заливать `.ics` вручную (`python parse_now.py --input data/schedule.ics --reset`).
-3. **Telegram, наоборот, доступен с зарубежного IP** — бота логичнее держать на Render
-   (Background Worker: `python start_bot.py`), а для РФ-сервера задать `TELEGRAM_PROXY`.
+### Ручной вариант (без Blueprint)
 
-### Рекомендуемая схема
+Web Service: Runtime Python, Build `pip install -r requirements.txt`,
+Start `gunicorn run_server:app --bind 0.0.0.0:$PORT`. Для бота — второй web-сервис
+со Start `python run_bot_service.py` (поднимает health-порт, чтобы Render не убил
+процесс; альтернатива — платный Background Worker `python start_bot.py`).
 
-- **РФ-машина / VPS**: `start_scheduler.py` (обновление расписания) + БД.
-- **Render**: сайт (`gunicorn`) и/или Telegram-бот.
-- Либо всё на одном российском VPS, но боту задать `TELEGRAM_PROXY`.
+### ⚠️ Лимиты бесплатного тарифа Render
+
+- Web-сервис **засыпает** после ~15 мин без запросов → холодный старт ~30–60 сек.
+  Чтобы не засыпал, пингуйте `/` (uptime-робот) каждые 10–14 мин.
+- **Background Worker и Cron** на free недоступны (только платно).
+- **Persistent Disk** на free нет → только внешний Postgres.
+- Токен бота храните только в переменных окружения. Он был захардкожен в
+  `start_bot.py` — **перевыпустите токен в @BotFather** (`/revoke`).
 
 ## Структура проекта
 
@@ -208,10 +228,14 @@ shedule_sevsu/
 │   └── parser.py       # Старый HTML-парсер (не используется)
 ├── data/               # БД, скачанные .ics (не в git)
 ├── run.py              # Инициализация БД + админ
-├── run_server.py       # Запуск сайта
-├── start_bot.py        # Запуск Telegram-бота
+├── run_server.py       # Запуск сайта (gunicorn run_server:app)
+├── run_bot_service.py  # Бот как web-сервис (health-порт, для Render free)
+├── start_bot.py        # Запуск Telegram-бота (worker)
 ├── start_scheduler.py  # Автообновление расписания
+├── update_once.py      # Разовое обновление (cron/ручной запуск)
 ├── parse_now.py        # Ручной импорт .ics/.json/.html
+├── render.yaml         # Blueprint для Render
+├── Procfile            # Команда запуска (web)
 ├── git_push.sh         # Хелпер для push в GitHub
 ├── requirements.txt
 └── README.md

@@ -1,13 +1,14 @@
 # Render Blueprint: https://render.com/docs/blueprint-spec
 #
-# ВАЖНО (см. README → Деплой):
-#  - Web-сервис (сайт) можно ставить на Render.
-#  - Бот (worker) на Render работает (Telegram доступен), см. TELEGRAM_PROXY не нужен.
-#  - Cron-обновление расписания требует российский IP. На Render будет 403,
-#    поэтому либо задайте SCHEDULE_PROXY (российский прокси), либо держите
-#    start_scheduler.py на российской машине.
-#  - Данные: SQLite на Render эфемерна. Подключите Postgres (DATABASE_URL)
-#    или Render Disk + SCHEDULE_DB_PATH=/var/data/schedule.db
+# Что можно разместить на Render:
+#   ✅ Сайт (web)                — gunicorn run_server:app
+#   ✅ Telegram-бот (web, free)  — run_bot_service.py (Telegram доступен с US-IP)
+#   ❌ Автообновление расписания — DDoS-Guard отдаёт 403 с не-РФ IP.
+#        Держите start_scheduler.py на РФ-машине (пишет в общий Postgres)
+#        либо задайте SCHEDULE_PROXY (российский прокси).
+#
+# Данные: диск Render эфемерный, SQLite стирается при рестарте.
+#   → подключите внешний Postgres и задайте DATABASE_URL (Neon/Supabase/Render).
 
 envVarGroups:
   - name: schedule-sevsu
@@ -32,9 +33,12 @@ envVarGroups:
         sync: false
       - key: TELEGRAM_ADMIN_ID
         sync: false
-      # - key: SCHEDULE_PROXY
+      - key: FLASK_DEBUG
+        value: "0"
+      # Обязательно для сохранения данных между рестартами:
+      # - key: DATABASE_URL
       #   sync: false
-      # - key: TELEGRAM_PROXY
+      # - key: SCHEDULE_PROXY
       #   sync: false
 
 services:
@@ -48,23 +52,24 @@ services:
     envVars:
       - fromGroup: schedule-sevsu
 
-  # ─── Telegram-бот (нужен платный план — background worker) ───
-  - type: worker
+  # ─── Telegram-бот как бесплатный web-сервис (слушает $PORT) ───
+  - type: web
     name: schedule-sevsu-bot
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python start_bot.py
+    startCommand: python run_bot_service.py
     envVars:
       - fromGroup: schedule-sevsu
 
-  # ─── Обновление расписания (cron; нужен российский IP или SCHEDULE_PROXY) ───
-  - type: cron
-    name: schedule-sevsu-update
-    runtime: python
-    plan: starter
-    schedule: "*/30 * * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: python update_once.py
-    envVars:
-      - fromGroup: schedule-sevsu
+  # ─── Автообновление расписания (нужен РФ-IP или SCHEDULE_PROXY) ───
+  # На Render бесплатного cron нет; при заданном SCHEDULE_PROXY можно так:
+  # - type: cron
+  #   name: schedule-sevsu-update
+  #   runtime: python
+  #   plan: starter
+  #   schedule: "*/30 * * * *"
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: python update_once.py
+  #   envVars:
+  #     - fromGroup: schedule-sevsu
