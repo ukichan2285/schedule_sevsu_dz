@@ -4,6 +4,8 @@ DirectoryIndex site.wsgi
 Options +ExecCGI
 AddHandler wsgi-script .wsgi
 RewriteEngine On
+# корень сайта — сразу в приложение (иначе редирект на /site.wsgi/)
+RewriteRule ^$ site.wsgi/ [L]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ /site.wsgi/$1 [QSA,PT,L]
+RewriteRule ^(.*)$ site.wsgi/$1 [QSA,PT,L]
