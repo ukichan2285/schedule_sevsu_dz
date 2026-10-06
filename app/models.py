@@ -67,6 +67,10 @@ def migrate():
                   'ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)')
     ensure_column('homework_files', 'size',
                   'ALTER TABLE homework_files ADD COLUMN size INTEGER')
+    ensure_column('feedback', 'notified',
+                  'ALTER TABLE feedback ADD COLUMN notified BOOLEAN DEFAULT FALSE')
+    ensure_column('feedback', 'notified_at',
+                  'ALTER TABLE feedback ADD COLUMN notified_at TIMESTAMP')
 
 
 def ensure_admin():
@@ -226,6 +230,9 @@ class Feedback(Base):
     text = Column(Text)
     created_at = Column(DateTime)
     is_read = Column(Boolean, default=False)
+    # Доставлено ли уведомление админу в Telegram (для повторных попыток)
+    notified = Column(Boolean, default=False)
+    notified_at = Column(DateTime)
     author = relationship('User', back_populates='feedback_messages')
 
     def to_dict(self):

@@ -7,6 +7,7 @@
 Затем админ присылает текст (Markdown) и/или фото; всё сохраняется в БД,
 а сайт показывает ДЗ с рендером Markdown и картинками.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta, date
 from html import escape
@@ -17,6 +18,7 @@ from telegram.ext import (
     Application, CommandHandler, ContextTypes, CallbackQueryHandler,
     MessageHandler, filters,
 )
+from telegram.request import HTTPXRequest
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 # httpx логирует полный URL запроса, а в нём — токен бота. Приглушаем.
@@ -74,7 +76,11 @@ class ScheduleBot:
     # ────────── Приложение ──────────
     def create_application(self):
         from app import config
-        builder = Application.builder().token(self.token)
+        # Соединение с Telegram на РФ-хостинге иногда рвётся (ConnectTimeout).
+        # Поднимаем таймауты и добавляем повторы (см. _send_telegram / _resend_loop).
+        request = HTTPXRequest(connect_timeout=10.0, read_timeout=20.0,
+                               write_timeout=20.0, pool_timeout=5.0)
+        builder = Application.builder().token(self.token).request(request)
         if config.TELEGRAM_PROXY:
             builder = builder.proxy(config.TELEGRAM_PROXY).get_updates_proxy(config.TELEGRAM_PROXY)
         application = builder.build()
@@ -93,9 +99,23 @@ class ScheduleBot:
         application.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
         application.add_handler(MessageHandler(filters.Document.IMAGE, self.on_document))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
+        application.add_error_handler(self.on_error)
+
+        # После старта запускаем фоновую досылку неотправленных пожеланий
+        application.post_init = self._post_init
 
         self.application = application
         return application
+
+    async def _post_init(self, application):
+        try:
+            application.create_task(self._resend_loop(application))
+            logger.info('Фоновая досылка пожеланий запущена')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Не удалось запустить досылку пожеланий: %s', exc)
+
+    async def on_error(self, update, context):
+        logger.warning('Ошибка обработки запроса: %s', context.error)
 
     # ────────── Команды ──────────
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -264,7 +284,7 @@ class ScheduleBot:
         session = self._session()
         try:
             db_user = self._user(session, u.id)
-            session.add(Feedback(
+            fb = Feedback(
                 user_id=db_user.id if db_user else None,
                 telegram_id=u.id,
                 username=u.username,
@@ -272,17 +292,31 @@ class ScheduleBot:
                 text=text,
                 created_at=datetime.now(),
                 is_read=False,
-            ))
+                notified=False,
+            )
+            session.add(fb)
             session.commit()
+            fb_id = fb.id
         finally:
             session.close()
 
-        await self._notify_admins(context, u, text)
-        await update.message.reply_text(
-            '✅ Спасибо! Ваше сообщение отправлено администратору.')
+        # Подтверждаем пользователю сразу — сохранение уже прошло.
+        try:
+            await update.message.reply_text(
+                '✅ Спасибо! Сообщение сохранено и отправлено администратору.')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Не удалось ответить пользователю %s: %s', u.id, exc)
 
-    async def _notify_admins(self, context, user, text):
-        """Переслать пожелание всем админам (из конфига и БД)."""
+        # Доставку админу делаем отдельной задачей: при обрыве связи Telegram
+        # будут повторы, а фоновая досылка (_resend_loop) дошлёт позже.
+        try:
+            context.application.create_task(self._deliver_feedback(context.bot, fb_id))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Не удалось запустить доставку пожелания %s: %s', fb_id, exc)
+
+    # ────────── Доставка пожеланий админу (с повторами) ──────────
+    def _admin_ids(self):
+        """ID админов: из конфига и из БД (role='admin')."""
         from app import config
         from app.models import User
         ids = set()
@@ -300,20 +334,98 @@ class ScheduleBot:
                     ids.add(int(tid))
         finally:
             session.close()
+        return ids
 
-        body = (
+    @staticmethod
+    def _feedback_body(full_name, username, tg_id, text):
+        return (
             '💬 <b>Новое пожелание</b>\n'
-            f'От: <b>{escape(user.full_name or "")}</b>'
-            + (f' (@{escape(user.username)})' if user.username else '')
-            + f'\nTelegram ID: <code>{user.id}</code>\n\n'
+            f'От: <b>{escape(full_name or "")}</b>'
+            + (f' (@{escape(username)})' if username else '')
+            + f'\nTelegram ID: <code>{tg_id}</code>\n\n'
             + escape(text)
         )
-        for admin_id in ids:
+
+    async def _send_telegram(self, bot, chat_id, text, attempts=4):
+        """send_message с повторами при сетевых сбоях. True, если доставлено."""
+        from telegram.error import RetryAfter, TimedOut, NetworkError
+        for n in range(attempts):
             try:
-                await context.bot.send_message(chat_id=admin_id, text=body,
-                                               parse_mode=ParseMode.HTML)
+                await bot.send_message(chat_id=chat_id, text=text,
+                                       parse_mode=ParseMode.HTML)
+                return True
+            except RetryAfter as exc:
+                delay = float(getattr(exc, 'retry_after', 3) or 3) + 1
+                logger.warning('Telegram лимит для %s, пауза %.0fс', chat_id, delay)
+                await asyncio.sleep(delay)
+            except (TimedOut, NetworkError) as exc:
+                if n >= attempts - 1:
+                    logger.warning('Не удалось отправить в чат %s после %d попыток: %s',
+                                   chat_id, attempts, exc)
+                    return False
+                await asyncio.sleep(1.5 * (2 ** n))
             except Exception as exc:  # noqa: BLE001
-                logger.warning('Не удалось уведомить админа %s: %s', admin_id, exc)
+                logger.warning('Ошибка отправки в чат %s: %s', chat_id, exc)
+                return False
+        return False
+
+    async def _deliver_feedback(self, bot, fb_id):
+        """Отправить одно пожелание админам; при успехе пометить notified."""
+        from app.models import Feedback
+        session = self._session()
+        try:
+            fb = session.get(Feedback, fb_id)
+            if not fb or fb.notified:
+                return
+            body = self._feedback_body(fb.full_name, fb.username, fb.telegram_id, fb.text)
+        finally:
+            session.close()
+
+        delivered = False
+        for admin_id in self._admin_ids():
+            if await self._send_telegram(bot, admin_id, body):
+                delivered = True
+
+        if delivered:
+            session = self._session()
+            try:
+                fb = session.get(Feedback, fb_id)
+                if fb and not fb.notified:
+                    fb.notified = True
+                    fb.notified_at = datetime.now()
+                    session.commit()
+            finally:
+                session.close()
+
+    async def _resend_loop(self, application):
+        """Периодически дошлёт пожелания, которые не ушли из-за сбоя сети."""
+        await asyncio.sleep(15)
+        while True:
+            try:
+                await self._resend_pending(application.bot)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning('Ошибка фоновой досылки пожеланий: %s', exc)
+            await asyncio.sleep(60)
+
+    async def _resend_pending(self, bot):
+        from sqlalchemy import or_
+        from app.models import Feedback
+        session = self._session()
+        try:
+            pending = (session.query(Feedback)
+                       .filter(or_(Feedback.notified.is_(False),
+                                   Feedback.notified.is_(None)))
+                       .order_by(Feedback.created_at).limit(20).all())
+            ids = [f.id for f in pending]
+        finally:
+            session.close()
+
+        if ids:
+            logger.info('Досылка пожеланий: %s', ids)
+        for fid in ids:
+            await self._deliver_feedback(bot, fid)
 
     # ────────── Инлайн-кнопки ──────────
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
