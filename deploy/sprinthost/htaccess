@@ -1,0 +1,9 @@
+# .htaccess для SprintHost: включение uWSGI (Python / Flask)
+# Положить в корень сайта: /home/<login>/domains/<domain>/public_html/.htaccess
+DirectoryIndex site.wsgi
+Options +ExecCGI
+AddHandler wsgi-script .wsgi
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /site.wsgi/$1 [QSA,PT,L]
