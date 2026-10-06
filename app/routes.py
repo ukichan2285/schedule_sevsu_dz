@@ -1,9 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, abort
 from datetime import datetime, timedelta
+from io import BytesIO
 
 from sqlalchemy.orm import joinedload
 
-from app.models import Schedule, Homework, ScheduleChange, Session, User
+from app.models import Schedule, Homework, HomeworkFile, ScheduleChange, Session, User
 from app.updater import run_update
 
 main = Blueprint('main', __name__)
@@ -21,7 +22,7 @@ def get_week_lessons(monday):
     session = Session()
     try:
         lessons = (session.query(Schedule)
-                   .options(joinedload(Schedule.homework))
+                   .options(joinedload(Schedule.homework).joinedload(Homework.files))
                    .filter(Schedule.period_start == monday)
                    .order_by(Schedule.lesson_number)
                    .all())
@@ -34,7 +35,7 @@ def get_day_lessons(day_name, monday):
     session = Session()
     try:
         return (session.query(Schedule)
-                .options(joinedload(Schedule.homework))
+                .options(joinedload(Schedule.homework).joinedload(Homework.files))
                 .filter(Schedule.period_start == monday,
                         Schedule.day_of_week == day_name)
                 .order_by(Schedule.lesson_number)
@@ -88,41 +89,23 @@ def changes():
         session.close()
 
 
-@main.route('/set_homework', methods=['POST'])
-def set_homework():
-    """Сохранить домашнее задание для занятия."""
-    schedule_id = request.form.get('schedule_id')
-    homework_text = (request.form.get('homework') or '').strip()
-    back = request.form.get('next') or '/'
-
-    if not schedule_id or not homework_text:
-        flash('Заполните все поля', 'error')
-        return redirect(back)
-
+@main.route('/homework/file/<int:file_id>')
+def homework_file(file_id):
+    """Отдать вложение к ДЗ (фото/файл) из БД."""
     session = Session()
     try:
-        lesson = session.get(Schedule, int(schedule_id))
-        if not lesson:
-            flash('Занятие не найдено', 'error')
-            return redirect(back)
-
-        hw = session.query(Homework).filter(Homework.schedule_id == lesson.id).first()
-        if hw:
-            hw.text = homework_text
-            hw.updated_at = datetime.now()
-        else:
-            session.add(Homework(
-                schedule_id=lesson.id,
-                user_id=1,
-                text=homework_text,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-            ))
-        session.commit()
-        flash('Домашнее задание записано!', 'success')
+        f = session.get(HomeworkFile, file_id)
+        if not f or not f.data:
+            abort(404)
+        return send_file(
+            BytesIO(f.data),
+            mimetype=f.mime_type or 'application/octet-stream',
+            download_name=f.file_name or f'file_{f.id}',
+            as_attachment=False,
+            max_age=3600,
+        )
     finally:
         session.close()
-    return redirect(back)
 
 
 @main.route('/update_schedule')
@@ -141,6 +124,7 @@ def update_schedule():
 # ─── JSON API (для бота и фронтенда) ───
 
 def _lesson_json(l):
+    hw = l.homework
     return {
         'id': l.id,
         'day_of_week': l.day_of_week,
@@ -149,7 +133,8 @@ def _lesson_json(l):
         'teacher': l.teacher,
         'location': l.location,
         'lesson_type': l.lesson_type,
-        'homework': l.homework.text if l.homework else None,
+        'homework': hw.text if hw else None,
+        'homework_files': [f.to_dict() for f in hw.files] if hw else [],
     }
 
 

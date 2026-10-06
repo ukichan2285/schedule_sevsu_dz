@@ -19,4 +19,8 @@ def create_app():
     app.register_blueprint(main)
     app.register_blueprint(admin)
 
+    # Фильтр для рендера Markdown из ДЗ: в шаблонах {{ text | md }}
+    from app.markdown_render import render as render_md
+    app.add_template_filter(render_md, 'md')
+
     return app

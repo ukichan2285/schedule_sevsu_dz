@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Text, DateTime, Date, ForeignKey, Boolean, text, inspect
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Text, DateTime, Date, ForeignKey, Boolean, LargeBinary, text, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
@@ -167,9 +167,36 @@ class Homework(Base):
     updated_at = Column(DateTime)
     schedule = relationship('Schedule', back_populates='homework')
     author = relationship('User', back_populates='homework_assignments')
-    
+    files = relationship('HomeworkFile', back_populates='homework',
+                         cascade='all, delete-orphan', order_by='HomeworkFile.id')
+
     def to_dict(self):
-        return {'id': self.id, 'schedule_id': self.schedule_id, 'text': self.text}
+        return {
+            'id': self.id,
+            'schedule_id': self.schedule_id,
+            'text': self.text,
+            'files': [f.to_dict() for f in self.files],
+        }
+
+
+class HomeworkFile(Base):
+    """Вложение к ДЗ (фото/документ). Данные лежат в БД (Postgres bytea)."""
+    __tablename__ = 'homework_files'
+    id = Column(Integer, primary_key=True)
+    homework_id = Column(Integer, ForeignKey('homework.id', ondelete='CASCADE'), nullable=False)
+    file_name = Column(String(255))
+    mime_type = Column(String(100))
+    data = Column(LargeBinary)
+    created_at = Column(DateTime)
+    homework = relationship('Homework', back_populates='files')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'file_name': self.file_name,
+            'mime_type': self.mime_type,
+            'size': len(self.data) if self.data else 0,
+        }
 
 class ScheduleChange(Base):
     __tablename__ = 'schedule_changes'

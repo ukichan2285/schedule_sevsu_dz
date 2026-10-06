@@ -239,6 +239,7 @@ def homework():
             'location': l.location,
             'homework_id': l.homework.id if l.homework else None,
             'homework_text': l.homework.text if l.homework else '',
+            'homework_files': len(l.homework.files) if l.homework else 0,
         } for l in lessons]
     finally:
         s.close()
@@ -249,49 +250,8 @@ def homework():
                            has_lessons=bool(data), offset=offset)
 
 
-@admin.route('/admin/homework/save', methods=['POST'])
-@login_required
-def homework_save():
-    schedule_id = request.form.get('schedule_id')
-    text = (request.form.get('text') or '').strip()
-    back = request.form.get('next') or url_for('admin.homework')
-
-    if not schedule_id:
-        flash('Не указано занятие', 'error')
-        return redirect(back)
-
-    s = Session()
-    try:
-        lesson = s.get(Schedule, int(schedule_id))
-        if not lesson:
-            flash('Занятие не найдено', 'error')
-            return redirect(back)
-
-        hw = s.query(Homework).filter(Homework.schedule_id == lesson.id).first()
-        if not text:
-            if hw:
-                s.delete(hw)
-                s.commit()
-                flash('ДЗ удалено', 'success')
-            return redirect(back)
-
-        if hw:
-            hw.text = text
-            hw.updated_at = datetime.now()
-        else:
-            me = current_user()
-            s.add(Homework(
-                schedule_id=lesson.id,
-                user_id=me.id if me else 1,
-                text=text,
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-            ))
-        s.commit()
-        flash('ДЗ сохранено', 'success')
-    finally:
-        s.close()
-    return redirect(back)
+# Заполнение ДЗ перенесено в Telegram-бота (см. app/bot.py):
+# страница /admin/homework — только просмотр.
 
 
 # ─────────── Журнал изменений ───────────

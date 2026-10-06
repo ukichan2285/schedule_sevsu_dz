@@ -4,6 +4,7 @@
   /home/<login>/domains/<domain>/public_html/site.wsgi
 Код проекта — вне веб-корня: /home/<login>/schedule_app
 """
+# rev: 2026-10-06 homework-attachments (перезапуск uWSGI при обновлении)
 import glob
 import os
 import sys
