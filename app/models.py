@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Text, DateTime, Date, ForeignKey, Boolean, LargeBinary, text, inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship, sessionmaker, deferred
 from datetime import datetime
 import os
 
@@ -65,6 +65,8 @@ def migrate():
                   'ALTER TABLE schedule ADD COLUMN period_start DATE')
     ensure_column('users', 'password_hash',
                   'ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)')
+    ensure_column('homework_files', 'size',
+                  'ALTER TABLE homework_files ADD COLUMN size INTEGER')
 
 
 def ensure_admin():
@@ -186,7 +188,9 @@ class HomeworkFile(Base):
     homework_id = Column(Integer, ForeignKey('homework.id', ondelete='CASCADE'), nullable=False)
     file_name = Column(String(255))
     mime_type = Column(String(100))
-    data = Column(LargeBinary)
+    size = Column(Integer)
+    # data отложенная: страницы со списком занятий не тянут байты картинок
+    data = deferred(Column(LargeBinary))
     created_at = Column(DateTime)
     homework = relationship('Homework', back_populates='files')
 
@@ -195,7 +199,7 @@ class HomeworkFile(Base):
             'id': self.id,
             'file_name': self.file_name,
             'mime_type': self.mime_type,
-            'size': len(self.data) if self.data else 0,
+            'size': self.size or 0,
         }
 
 class ScheduleChange(Base):

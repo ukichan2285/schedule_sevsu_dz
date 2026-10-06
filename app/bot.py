@@ -375,7 +375,7 @@ class ScheduleBot:
             db_user = self._user(session, u.id)
             hw = self._get_or_create_homework(session, schedule_id, db_user.id)
             session.add(HomeworkFile(homework_id=hw.id, file_name=name, mime_type=mime,
-                                     data=data, created_at=datetime.now()))
+                                     size=len(data), data=data, created_at=datetime.now()))
             session.commit()
             total = session.query(HomeworkFile).filter(HomeworkFile.homework_id == hw.id).count()
         finally:
