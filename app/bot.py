@@ -84,10 +84,12 @@ class ScheduleBot:
         application.add_handler(CommandHandler(['get_schedule', 'schedule'], self.get_schedule))
         application.add_handler(CommandHandler(['get_changes', 'changes'], self.get_changes))
         application.add_handler(CommandHandler(['homework', 'set_homework', 'dz'], self.homework))
+        application.add_handler(CommandHandler(['feedback', 'suggest', 'idea'], self.feedback))
         application.add_handler(CommandHandler('done', self.done))
         application.add_handler(CommandHandler('cancel', self.cancel))
 
         application.add_handler(CallbackQueryHandler(self.on_callback, pattern=r'^hw:'))
+        application.add_handler(CallbackQueryHandler(self.on_feedback_callback, pattern=r'^fb:'))
         application.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
         application.add_handler(MessageHandler(filters.Document.IMAGE, self.on_document))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
@@ -105,6 +107,7 @@ class ScheduleBot:
         finally:
             session.close()
         role = '👑 администратор' if is_admin else '👤 пользователь'
+        keyboard = [[InlineKeyboardButton('✍️ Написать админу', callback_data='fb:start')]]
         await update.message.reply_text(
             f'Привет, <b>{escape(u.full_name)}</b>! 📚\n'
             f'Твой Telegram ID: <code>{u.id}</code> ({role})\n\n'
@@ -112,15 +115,18 @@ class ScheduleBot:
             '/get_schedule — расписание на сегодня\n'
             '/get_changes — последние изменения\n'
             '/homework — задать ДЗ (только админ)\n'
+            '/feedback — написать пожелание админу\n'
             '/help — справка',
-            parse_mode=ParseMode.HTML)
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard))
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             '<b>Справка</b>\n'
             '/get_schedule — расписание на сегодня\n'
             '/get_changes — последние изменения расписания\n'
-            '/homework — задать ДЗ к паре (текст Markdown + фото)\n\n'
+            '/homework — задать ДЗ к паре (текст Markdown + фото)\n'
+            '/feedback — отправить пожелание/идею администратору\n\n'
             'ДЗ заполняется кнопками: неделя → день → пара. '
             'Потом пришли текст и/или фото и нажми «✅ Готово».',
             parse_mode=ParseMode.HTML)
@@ -191,6 +197,7 @@ class ScheduleBot:
             return
 
         context.user_data.pop('hw_schedule_id', None)
+        context.user_data.pop('feedback_mode', None)
         keyboard = []
         for w in weeks:
             label = fmt_week(w) + (' · текущая' if w == cm else '')
@@ -203,8 +210,110 @@ class ScheduleBot:
         await update.message.reply_text('✅ Готово. ДЗ сохранено.')
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        had_feedback = context.user_data.pop('feedback_mode', None)
         context.user_data.pop('hw_schedule_id', None)
-        await update.message.reply_text('Отменено.')
+        await update.message.reply_text('Отменено.' if not had_feedback else 'Отменено. Пожелание не отправлено.')
+
+    # ────────── Обратная связь (пожелания админу) ──────────
+    async def feedback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Старт режима отправки пожелания администратору."""
+        context.user_data.pop('hw_schedule_id', None)
+        context.user_data['feedback_mode'] = True
+        await update.message.reply_text(
+            '✍️ Напишите одним сообщением ваше пожелание или предложение '
+            'по боту и приложению — оно уйдёт администратору.\n\n'
+            'Отмена — /cancel.',
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton('« Отмена', callback_data='fb:cancel')]]),
+            parse_mode=ParseMode.HTML)
+
+    async def on_feedback_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        await query.answer()
+        parts = query.data.split(':')
+        kind = parts[1] if len(parts) > 1 else ''
+
+        if kind == 'start':
+            context.user_data.pop('hw_schedule_id', None)
+            context.user_data['feedback_mode'] = True
+            await query.edit_message_text(
+                '✍️ Напишите одним сообщением ваше пожелание или предложение '
+                'по боту и приложению — оно уйдёт администратору.\n\n'
+                'Отмена — /cancel.',
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton('« Отмена', callback_data='fb:cancel')]]),
+                parse_mode=ParseMode.HTML)
+
+        elif kind == 'cancel':
+            context.user_data.pop('feedback_mode', None)
+            await query.edit_message_text('Отменено. Пожелание не отправлено.')
+
+    async def _handle_feedback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Сохранить пожелание и уведомить администраторов."""
+        u = update.effective_user
+        text = (update.message.text or '').strip()
+        if not text:
+            await update.message.reply_text('Пустое сообщение — напишите текст пожелания.')
+            return
+        if len(text) > 4000:
+            text = text[:4000]
+
+        context.user_data.pop('feedback_mode', None)
+
+        from app.models import Feedback
+        session = self._session()
+        try:
+            db_user = self._user(session, u.id)
+            session.add(Feedback(
+                user_id=db_user.id if db_user else None,
+                telegram_id=u.id,
+                username=u.username,
+                full_name=u.full_name,
+                text=text,
+                created_at=datetime.now(),
+                is_read=False,
+            ))
+            session.commit()
+        finally:
+            session.close()
+
+        await self._notify_admins(context, u, text)
+        await update.message.reply_text(
+            '✅ Спасибо! Ваше сообщение отправлено администратору.')
+
+    async def _notify_admins(self, context, user, text):
+        """Переслать пожелание всем админам (из конфига и БД)."""
+        from app import config
+        from app.models import User
+        ids = set()
+        for value in (config.ADMIN_TELEGRAM_ID, config.TELEGRAM_ADMIN_ID):
+            try:
+                if value:
+                    ids.add(int(value))
+            except (TypeError, ValueError):
+                pass
+        session = self._session()
+        try:
+            for (tid,) in (session.query(User.telegram_id)
+                           .filter(User.role == 'admin', User.telegram_id.isnot(None)).all()):
+                if tid:
+                    ids.add(int(tid))
+        finally:
+            session.close()
+
+        body = (
+            '💬 <b>Новое пожелание</b>\n'
+            f'От: <b>{escape(user.full_name or "")}</b>'
+            + (f' (@{escape(user.username)})' if user.username else '')
+            + f'\nTelegram ID: <code>{user.id}</code>\n\n'
+            + escape(text)
+        )
+        for admin_id in ids:
+            try:
+                await context.bot.send_message(chat_id=admin_id, text=body,
+                                               parse_mode=ParseMode.HTML)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning('Не удалось уведомить админа %s: %s', admin_id, exc)
 
     # ────────── Инлайн-кнопки ──────────
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -321,6 +430,9 @@ class ScheduleBot:
 
     # ────────── Контент ДЗ: текст и файлы ──────────
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if context.user_data.get('feedback_mode'):
+            await self._handle_feedback(update, context)
+            return
         schedule_id = context.user_data.get('hw_schedule_id')
         if not schedule_id:
             return  # обычное сообщение вне режима ввода ДЗ — игнорируем

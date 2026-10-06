@@ -28,6 +28,16 @@
             <div class="text-muted">Изменения</div>
         </div></div>
     </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100 {% if stats.feedback_unread %}border-warning{% endif %}">
+            <div class="card-body">
+                <div class="fs-2 fw-bold">{{ stats.feedback }}</div>
+                <div class="text-muted">Пожелания
+                    {% if stats.feedback_unread %}<span class="badge bg-warning text-dark">{{ stats.feedback_unread }}</span>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="list-group">
@@ -36,6 +46,10 @@
     </a>
     <a href="/admin/homework" class="list-group-item list-group-item-action">
         <i class="bi bi-card-text"></i> Домашние задания — добавить/изменить
+    </a>
+    <a href="/admin/feedback" class="list-group-item list-group-item-action">
+        <i class="bi bi-chat-left-text"></i> Пожелания пользователей
+        {% if stats.feedback_unread %}<span class="badge bg-warning text-dark">{{ stats.feedback_unread }} новых</span>{% endif %}
     </a>
     <a href="/admin/changes" class="list-group-item list-group-item-action">
         <i class="bi bi-clock-history"></i> Журнал изменений расписания

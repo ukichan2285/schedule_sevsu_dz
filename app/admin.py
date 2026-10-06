@@ -6,7 +6,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash, session)
 from sqlalchemy import func
 
-from app.models import Session, User, Schedule, Homework, ScheduleChange
+from app.models import Session, User, Schedule, Homework, ScheduleChange, Feedback
 
 admin = Blueprint('admin', __name__)
 
@@ -87,6 +87,8 @@ def dashboard():
             'lessons': s.query(Schedule).count(),
             'homework': s.query(Homework).count(),
             'changes': s.query(ScheduleChange).count(),
+            'feedback': s.query(Feedback).count(),
+            'feedback_unread': s.query(Feedback).filter(Feedback.is_read.is_(False)).count(),
         }
     finally:
         s.close()
@@ -268,3 +270,63 @@ def changes():
     finally:
         s.close()
     return render_template('admin/changes.html', changes=data)
+
+
+# ─────────── Обратная связь (пожелания пользователей) ───────────
+
+@admin.route('/admin/feedback')
+@admin_required
+def feedback():
+    s = Session()
+    try:
+        items = (s.query(Feedback)
+                 .order_by(Feedback.created_at.desc())
+                 .limit(200).all())
+        data = [f.to_dict() for f in items]
+        unread = sum(1 for f in data if not f['is_read'])
+    finally:
+        s.close()
+    return render_template('admin/feedback.html', feedback=data, unread=unread)
+
+
+@admin.route('/admin/feedback/<int:fid>/read', methods=['POST'])
+@admin_required
+def feedback_read(fid):
+    s = Session()
+    try:
+        f = s.get(Feedback, fid)
+        if f:
+            f.is_read = True
+            s.commit()
+    finally:
+        s.close()
+    return redirect(url_for('admin.feedback'))
+
+
+@admin.route('/admin/feedback/read_all', methods=['POST'])
+@admin_required
+def feedback_read_all():
+    s = Session()
+    try:
+        s.query(Feedback).filter(Feedback.is_read.is_(False)).update(
+            {Feedback.is_read: True}, synchronize_session=False)
+        s.commit()
+        flash('Все пожелания отмечены прочитанными', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.feedback'))
+
+
+@admin.route('/admin/feedback/<int:fid>/delete', methods=['POST'])
+@admin_required
+def feedback_delete(fid):
+    s = Session()
+    try:
+        f = s.get(Feedback, fid)
+        if f:
+            s.delete(f)
+            s.commit()
+            flash('Пожелание удалено', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.feedback'))

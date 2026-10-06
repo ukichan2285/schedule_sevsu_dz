@@ -117,6 +117,7 @@ class User(Base):
     created_at = Column(DateTime)
     is_active = Column(Boolean, default=True)
     homework_assignments = relationship('Homework', back_populates='author')
+    feedback_messages = relationship('Feedback', back_populates='author')
 
     def set_password(self, password):
         from werkzeug.security import generate_password_hash
@@ -209,3 +210,31 @@ class ScheduleChange(Base):
     new_hash = Column(String(64))
     changes = Column(Text)
     detected_at = Column(DateTime)
+
+
+class Feedback(Base):
+    """Пожелание/предложение от пользователя администратору.
+
+    Хранит текст, автора (telegram-id/имя) и дублируется админу в Telegram.
+    """
+    __tablename__ = 'feedback'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'))
+    telegram_id = Column(BigInteger)
+    username = Column(String(100))
+    full_name = Column(String(200))
+    text = Column(Text)
+    created_at = Column(DateTime)
+    is_read = Column(Boolean, default=False)
+    author = relationship('User', back_populates='feedback_messages')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'telegram_id': self.telegram_id,
+            'username': self.username,
+            'full_name': self.full_name,
+            'text': self.text,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'is_read': bool(self.is_read),
+        }
