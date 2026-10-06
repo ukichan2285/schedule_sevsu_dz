@@ -3,6 +3,8 @@ from telegram import Update, ForceReply
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# httpx логирует полный URL запроса, а в нём — токен бота. Приглушаем.
+logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 class ScheduleBot:
@@ -29,7 +31,15 @@ class ScheduleBot:
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        await update.message.reply_text(f'Привет, {user.full_name}! 📚\nЯ бот для отслеживания расписания.\n\nДоступные команды:\n/get_schedule - расписание\n/set_homework <дата> <номер> <текст> - ДЗ\n/help - справка')
+        logger.info('start: telegram_id=%s username=%s name=%s', user.id, user.username, user.full_name)
+        await update.message.reply_text(
+            f'Привет, {user.full_name}! 📚\n'
+            f'Твой Telegram ID: {user.id}\n\n'
+            'Доступные команды:\n'
+            '/get_schedule — расписание на сегодня\n'
+            '/get_changes — последние изменения\n'
+            '/set_homework <дата> <номер> <текст> — ДЗ\n'
+            '/help — справка')
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('/get_schedule - расписание\n/set_homework <дата> <номер> <текст> - ДЗ\n/admin_add_user <username> - добавить пользователя\n/admin_list_users - список пользователей')
