@@ -1,338 +1,51 @@
-# Система отслеживания расписания занятий SEVSU
+# schedule_sevsu
 
-Прототип системы для отслеживания расписания занятий с сайта https://schedule.sevsu.ru с возможностью управления через Telegram бот.
+Система отслеживания расписания занятий для учебной группы с сайта
+[schedule.sevsu.ru](https://schedule.sevsu.ru): веб-сайт с расписанием, домашними
+заданиями и админкой, а также Telegram-бот для заполнения ДЗ и обратной связи.
 
-## Возможности
+## Что умеет
 
-- Парсинг расписания занятий с сайта SEVSU
-- Анализ изменений в расписании
-- Добавление колонки "Домашнее задание"
-- Система аккаунтов с Telegram bot для управления
-- Поддержка администраторов и обычных пользователей
+- Показывает расписание на сайте (по дням и неделям) и отдаёт JSON API
+- Автоматически обновляет расписание из `.ics`-календаря группы и отслеживает изменения
+- Хранит домашние задания с Markdown-текстом и фото
+- Telegram-бот: заполнение ДЗ админом (`/homework`), обратная связь (`/feedback`)
+- Админ-панель: пользователи, ДЗ, пожелания, журнал изменений
 
-## Технологии
+## Стек
 
-- Python 3.14
-- Flask 3.0.0
-- SQLAlchemy 2.1.3
-- SQLite (data/schedule.db)
-- python-telegram-bot 22.8
-- BeautifulSoup 4.12.3
-- Requests 2.31.0
+Python 3.12, Flask, SQLAlchemy, PostgreSQL, python-telegram-bot, gunicorn.
 
-## Установка
+## Запуск
 
-1. Клонируйте репозиторий (или используйте текущую директорию)
-
-2. Создайте виртуальное окружение и установите зависимости:
 ```bash
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# или
-venv\Scripts\activate  # Windows
-
+source venv/bin/activate
 pip install -r requirements.txt
+
+cp .env.example .env   # и заполните значения
+python run.py          # создаёт таблицы и администратора
+python run_server.py   # сайт
+python start_bot.py    # Telegram-бот
 ```
 
-## Инициализация
+Обновление расписания разово: `python update_once.py` (удобно запускать из cron).
 
-1. Инициализируйте базу данных и создайте администратора:
-```bash
-source venv/bin/activate
-python run.py
-```
+## Конфигурация
 
-Скрипт создаст:
-- Базу данных в `data/schedule.db`
-- Администратора с username `admin`
-- Таблицы для хранения расписания, ДЗ и изменений
+Все настройки — в `.env` (шаблон: `.env.example`). Ключевые:
 
-## Настройка
+- `SCHEDULE_ICS_URL` — ссылка на `.ics`-календарь группы
+- `DATABASE_URL` — строка подключения к PostgreSQL
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ADMIN_ID` — бот и админ
+- `SECRET_KEY` — секрет Flask
 
-### Telegram Bot
+## Замечания
 
-В файле `app/bot.py` настройте параметры:
-```python
-self.token = "ВАШ_ТОКЕН_БОТА"
-self.admin_id = ВАШ_TELEGRAM_ID
-```
-
-В `start_bot.py` укажите таймзону:
-```python
-bot = ScheduleBot(
-    token="ВАШ_ТОКЕН_БОТА",
-    admin_id=ВАШ_TELEGRAM_ID,
-    timezone="Europe/Moscow"
-)
-```
-
-### Парсинг расписания
-
-⚠️ **Важно:** сайт schedule.sevsu.ru — это SPA. Расписание грузится JavaScript'ом
-через внутренний API, поэтому в HTML-коде страницы занятий нет. Обычный парсинг
-HTML не сработает, даже с российского IP.
-
-Рабочий способ — экспорт календаря `.ics`:
-1. Откройте `https://schedule.sevsu.ru/groups/rs-s-26-1-o` (нужен российский IP)
-2. ⚙ Настройки → «Получить ссылку на календарь»
-3. Сохраните `.ics` в `data/schedule.ics`
-4. Импортируйте:
-
-```bash
-source venv/bin/activate
-python parse_now.py --input data/schedule.ics --reset
-```
-
-Полезные опции:
-```bash
-python parse_now.py --input data/schedule.ics --week-offset 1   # следующая неделя
-python parse_now.py --input data/schedule.ics --all-weeks       # весь семестр
-python parse_now.py --ip                                        # проверить внешний IP
-```
-
-Поддерживаются также `.json` (ответ API из DevTools → Network) и `.html`
-(сохранённый DOM: Elements → Copy outerHTML).
-
-### DDoS-Guard
-
-Сайт https://schedule.sevsu.ru защищён DDoS-Guard и требует российский IP.
-Экспорт `.ics` делается через браузер, поэтому напрямую парсеру ходить
-на сайт не нужно.
-
-## Использование
-
-### Веб-сервер (Flask)
-
-```bash
-source venv/bin/activate
-python run_server.py
-```
-
-Адрес: http://127.0.0.1:5000
-
-Для публикации в интернете:
-```bash
-flask run --host=0.0.0.0 --port=80
-```
-
-### Автообновление расписания
-
-```bash
-source venv/bin/activate
-python start_scheduler.py
-```
-
-Каждые `UPDATE_INTERVAL_MINUTES` минут (по умолчанию 30) скачивает `.ics`-календарь,
-сравнивает с базой и записывает изменения в журнал.
-
-### Админ-панель
-
-Адрес входа: http://127.0.0.1:5000/login
-
-Первый администратор создаётся `run.py`:
-- логин — `ADMIN_USERNAME` (по умолчанию `admin`)
-- пароль — `ADMIN_PASSWORD` (по умолчанию `admin123`) — **смените!**
-
-Разделы (`/admin`):
-- **Пользователи** (`/admin/users`) — создание аккаунтов, роли, пароли, блокировка
-- **Домашние задания** (`/admin/homework`) — добавление/изменение/удаление ДЗ
-- **Пожелания пользователей** (`/admin/feedback`) — обратная связь из бота (кнопка «✍️ Написать админу»)
-- **Журнал изменений** (`/admin/changes`) — история автообновлений
-- **Обновить расписание** — принудительное обновление
-
-Пользователи с ролью `user` могут редактировать ДЗ, но не управлять пользователями.
-
-### Запуск бота
-
-```bash
-source venv/bin/activate
-python start_bot.py
-```
-
-### Команды Telegram бота
-
-| Команда | Описание | Доступ |
-|---------|----------|--------|
-| `/start` | Приветственное сообщение | Все |
-| `/help` | Справка по командам | Все |
-| `/get_schedule` | Получить текущее расписание | Все |
-| `/get_changes` | Получить последние изменения | Все |
-| `/homework` | Задать ДЗ (неделя → день → пара) | Админ |
-| `/feedback` | Отправить пожелание/идею администратору | Все |
-| `/cancel` | Отменить текущий ввод | Все |
-| `/admin_add_user` | Добавить пользователя (админ) | Админ |
-| `/admin_list_users` | Список пользователей (админ) | Админ |
-
-Пожелания из `/feedback` сохраняются в БД и дублируются администратору в Telegram
-(`ADMIN_TELEGRAM_ID` и все пользователи с ролью `admin`).
-
-## Деплой на Render
-
-Код готов к Render: есть `render.yaml` (Blueprint), `Procfile` и `.python-version`.
-Админ создаётся автоматически при старте (`create_app()` → `ensure_admin()`), поэтому
-gunicorn достаточно — отдельный запуск `run.py` не нужен.
-
-### Что заработает на Render, а что нет
-
-| Сервис | Render | Почему |
-|--------|--------|--------|
-| Сайт (Flask) | ✅ | обычный web-сервис |
-| Telegram-бот | ✅ | `api.telegram.org` доступен с US-IP |
-| Обновление расписания | ❌ | DDoS-Guard отдаёт 403 с не-РФ IP |
-
-### Шаг за шагом
-
-1. **Постоянная БД.** Диск Render эфемерный — SQLite обнулится при рестарте.
-   Создайте бесплатный Postgres (Neon / Supabase / Render) и положите строку
-   подключения в `DATABASE_URL`. Без этого данные и админ будут теряться.
-
-   **Supabase:** у него «Direct connection» работает по **IPv6**, а Render — IPv4-only.
-   Берите строку **Session pooler** (она IPv4): Connect → Session pooler →
-   `postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require`.
-   Пароль с символами `@ & # ?` нужно percent-encode (`@` → `%40`). Ту же строку
-   используйте на РФ-машине — тогда сайт на Render и планировщик смотрят в одну базу.
-2. **Render → New → Blueprint** → репозиторий `ukichan2285/schedule_sevsu_dz`.
-   Render прочитает `render.yaml` и создаст два web-сервиса:
-   `schedule-sevsu` (сайт) и `schedule-sevsu-bot` (бот).
-3. **Заполните переменные** (группа `schedule-sevsu`): `SCHEDULE_ICS_URL`,
-   `DEFAULT_GROUP`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `TELEGRAM_BOT_TOKEN`,
-   `TELEGRAM_ADMIN_ID`, `DATABASE_URL`. `SECRET_KEY` генерируется автоматически.
-4. **Обновление расписания** оставьте на российской машине. Она должна смотреть в
-   **тот же `DATABASE_URL`**, что и Render, — тогда сайт показывает свежие данные:
-   ```bash
-   # на РФ-машине
-   export DATABASE_URL='postgresql://...'   # тот же, что на Render
-   python update_once.py                    # разово
-   python start_scheduler.py                # или постоянно
-   ```
-   Альтернатива без РФ-машины: задать `SCHEDULE_PROXY` (российский прокси) на Render.
-5. Откройте сайт → **/login** → войдите под `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
-
-### Ручной вариант (без Blueprint)
-
-Web Service: Runtime Python, Build `pip install -r requirements.txt`,
-Start `gunicorn run_server:app --bind 0.0.0.0:$PORT`. Для бота — второй web-сервис
-со Start `python run_bot_service.py` (поднимает health-порт, чтобы Render не убил
-процесс; альтернатива — платный Background Worker `python start_bot.py`).
-
-### ⚠️ Лимиты бесплатного тарифа Render
-
-- Web-сервис **засыпает** после ~15 мин без запросов → холодный старт ~30–60 сек.
-  Чтобы не засыпал, пингуйте `/` (uptime-робот) каждые 10–14 мин.
-- **Background Worker и Cron** на free недоступны (только платно).
-- **Persistent Disk** на free нет → только внешний Postgres.
-- Токен бота храните только в переменных окружения. Он был захардкожен в
-  `start_bot.py` — **перевыпустите токен в @BotFather** (`/revoke`).
-
-## Структура проекта
-
-```
-shedule_sevsu/
-├── app/
-│   ├── __init__.py     # Создание Flask-приложения
-│   ├── admin.py        # Админ-панель (вход, пользователи, ДЗ)
-│   ├── bot.py          # Telegram бот
-│   ├── config.py       # Конфигурация из .env
-│   ├── ics_parser.py   # Разбор .ics-календаря
-│   ├── models.py       # Модели SQLAlchemy
-│   ├── routes.py       # Публичные страницы + JSON API
-│   ├── updater.py      # Автообновление расписания
-│   └── parser.py       # Старый HTML-парсер (не используется)
-├── data/               # БД, скачанные .ics (не в git)
-├── run.py              # Инициализация БД + админ
-├── run_server.py       # Запуск сайта (gunicorn run_server:app)
-├── run_bot_service.py  # Бот как web-сервис (health-порт, для Render free)
-├── start_bot.py        # Запуск Telegram-бота (worker)
-├── start_scheduler.py  # Автообновление расписания
-├── update_once.py      # Разовое обновление (cron/ручной запуск)
-├── parse_now.py        # Ручной импорт .ics/.json/.html
-├── render.yaml         # Blueprint для Render
-├── Procfile            # Команда запуска (web)
-├── git_push.sh         # Хелпер для push в GitHub
-├── requirements.txt
-└── README.md
-```
-
-## Модели данных
-
-### User
-- `id` - ID в БД
-- `telegram_id` - Telegram ID
-- `username` - Имя пользователя
-- `role` - Роль (admin/user)
-- `is_active` - Аккаунт активен
-
-### Schedule
-- `id` - ID в БД
-- `date` - Дата занятия
-- `day_of_week` - День недели
-- `lesson_number` - Номер пары
-- `subject` - Предмет
-- `teacher` - Преподаватель
-- `location` - Аудитория/Локация
-- `lesson_type` - Тип занятия
-- `hash` - Хеш для обнаружения изменений
-
-### Homework
-- `id` - ID в БД
-- `schedule_id` - Ссылка на расписание
-- `user_id` - Автор (ID)
-- `text` - Текст ДЗ
-- `created_at` - Дата создания
-- `updated_at` - Дата обновления
-
-### ScheduleChange
-- `id` - ID в БД
-- `old_hash` - Старый хеш
-- `new_hash` - Новый хеш
-- `changes` - Описание изменений
-- `detected_at` - Дата обнаружения
-
-## Проблемы и решения
-
-### 1. 403 Forbidden при парсинге
-**Причина:** DDoS-Guard защита требует российский IP.
-
-**Решение:** Запустите парсер с сервера в России или используйте прокси.
-
-### 2. Конфликт версий SQLAlchemy и Python 3.14
-**Причина:** SQLAlchemy 2.0.25 несовместим с Python 3.14.
-
-**Решение:** Обновлено до SQLAlchemy 2.1.3.
-
-### 3. Несовместимость python-telegram-bot 20.7
-**Причина:** Старая версия не поддерживает Python 3.14.
-
-**Решение:** Обновлено до python-telegram-bot 22.8.
-
-## Веб-интерфейс
-
-Запуск веб-сервера:
-```bash
-source venv/bin/activate
-python run_server.py
-```
-
-Адрес: http://127.0.0.1:5000
-
-### Возможности сайта:
-- Просмотр расписания на сегодня
-- Просмотр расписания на неделю
-- Добавление домашнего задания
-- Обновление расписания
-
-Для публикации в интернете используйте:
-```bash
-flask run --host=0.0.0.0 --port=80
-```
-
-## Дальнейшее развитие
-
-1. Автоматический парсинг по расписанию (каждый день в 00:00)
-2. Уведомления об изменениях расписания
-3. Экспорт расписания в ICS для календаря
-4. Голосования за замену преподавателей
+- `schedule.sevsu.ru` — SPA и отдаёт данные только с российских IP, поэтому
+  обновление расписания нужно запускать с российского адреса.
+- Секреты (`.env`, `.token`) в репозиторий не попадают.
 
 ## Лицензия
 
-MIT License
+См. файл [LICENSE](LICENSE).
