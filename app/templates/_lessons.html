@@ -1,0 +1,69 @@
+{% macro homework_block(hw, label='ДЗ:') %}
+    {% if hw and (hw.text or hw.files) %}
+    <div class="homework-box">
+        <small class="text-muted"><i class="bi bi-card-text"></i> {{ label }}</small>
+        {% if hw.text %}<div class="hw-text">{{ hw.text | md }}</div>{% endif %}
+        {% for f in hw.files %}
+            {% if f.mime_type and f.mime_type.startswith('image/') %}
+            <a href="/homework/file/{{ f.id }}" target="_blank">
+                <img src="/homework/file/{{ f.id }}" class="hw-img" alt="вложение">
+            </a>
+            {% else %}
+            <div><a href="/homework/file/{{ f.id }}" target="_blank"><i class="bi bi-paperclip"></i> {{ f.file_name or 'файл' }}</a></div>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+{% endmacro %}
+
+{# Таблица для десктопа/планшета #}
+{% macro lessons_table(lessons, show_day=false, highlight=false) %}
+<div class="table-responsive d-none d-md-block">
+    <table class="table table-bordered table-hover bg-white align-middle schedule-table mb-0">
+        <thead class="table-dark">
+            <tr>
+                <th class="num">№</th>
+                <th>Предмет</th>
+                <th>Тип</th>
+                <th>Преподаватель</th>
+                <th>Аудитория</th>
+                <th>Домашнее задание</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lesson in lessons %}
+            <tr class="{% if highlight %}today-row{% endif %}">
+                <td class="num">{{ lesson.lesson_number }}</td>
+                <td class="subject fw-semibold">{{ lesson.subject }}</td>
+                <td><span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span></td>
+                <td class="teacher">{{ lesson.teacher or '—' }}</td>
+                <td class="location">{{ lesson.location or '—' }}</td>
+                <td>{{ homework_block(lesson.homework) if lesson.homework and (lesson.homework.text or lesson.homework.files) else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+{# Список-карточки для телефона #}
+{% macro lessons_list(lessons, highlight=false) %}
+<div class="lesson-list d-md-none">
+    {% for lesson in lessons %}
+    <div class="lesson-item {% if highlight %}today-row{% endif %}">
+        <div class="lesson-head">
+            <span class="num-badge">{{ lesson.lesson_number }} пара</span>
+            <span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span>
+        </div>
+        <div class="subject fw-semibold mb-1">{{ lesson.subject }}</div>
+        <div class="small">
+            {% if lesson.teacher %}<div class="teacher"><i class="bi bi-person-badge"></i> {{ lesson.teacher }}</div>{% endif %}
+            {% if lesson.location %}<div class="location"><i class="bi bi-geo-alt"></i> {{ lesson.location }}</div>{% endif %}
+        </div>
+        {% if lesson.homework and (lesson.homework.text or lesson.homework.files) %}
+        {{ homework_block(lesson.homework) }}
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}

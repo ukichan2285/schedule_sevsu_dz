@@ -12,8 +12,14 @@
         .navbar-brand { color: #ecf0f1 !important; }
         .nav-link { color: #ecf0f1 !important; }
         .nav-link:hover { color: #3498db !important; }
-        .lesson-card { transition: transform 0.2s; }
-        .lesson-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .schedule-table td, .schedule-table th { vertical-align: top; }
+        .schedule-table .num { width: 3.5rem; text-align: center; font-weight: 700; color: #2c3e50; }
+        .schedule-table .subject { font-size: 1rem; color: #2980b9; }
+        .schedule-table .today-row td { background-color: #e8f8f0; }
+        .lesson-list .lesson-item { background: #fff; border-radius: 10px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .lesson-list .lesson-item.today-row { border-left: 4px solid #198754; }
+        .lesson-list .lesson-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .lesson-list .num-badge { font-weight: 700; color: #2c3e50; font-size: 1.05rem; }
         .homework-box { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; margin-top: 5px; }
         .hw-text { font-weight: 600; }
         .hw-text p { margin-bottom: 0.35rem; }
