@@ -30,7 +30,6 @@ def current_monday():
 
 # Кнопки постоянного меню (появляются под полем ввода).
 BTN_SCHEDULE = '📅 Расписание на сегодня'
-BTN_CHANGES = '🔄 Изменения'
 BTN_HOMEWORK = '📝 Задать ДЗ'
 BTN_FEEDBACK = '✍️ Пожелание админу'
 BTN_HELP = '❓ Помощь'
@@ -38,9 +37,7 @@ BTN_HELP = '❓ Помощь'
 
 def main_menu(is_admin):
     """Постоянная клавиатура. ДЗ показываем только админу."""
-    row1 = [BTN_SCHEDULE, BTN_CHANGES]
-    row2 = [BTN_FEEDBACK, BTN_HELP]
-    rows = [row1, row2]
+    rows = [[BTN_SCHEDULE], [BTN_FEEDBACK, BTN_HELP]]
     if is_admin:
         rows.insert(1, [BTN_HOMEWORK])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
@@ -160,8 +157,6 @@ class ScheduleBot:
         """Выполнить действие по нажатой кнопке. True, если текст был кнопкой."""
         if text == BTN_SCHEDULE:
             await self.get_schedule(update, context)
-        elif text == BTN_CHANGES:
-            await self.get_changes(update, context)
         elif text == BTN_HOMEWORK:
             await self.homework(update, context)
         elif text == BTN_FEEDBACK:
@@ -559,7 +554,7 @@ class ScheduleBot:
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (update.message.text or '').strip()
         # Нажатие кнопки меню важнее любого режима: сбрасываем ввод и выполняем действие.
-        if text in (BTN_SCHEDULE, BTN_CHANGES, BTN_HOMEWORK, BTN_FEEDBACK, BTN_HELP):
+        if text in (BTN_SCHEDULE, BTN_HOMEWORK, BTN_FEEDBACK, BTN_HELP):
             context.user_data.pop('hw_schedule_id', None)
             context.user_data.pop('feedback_mode', None)
             await self._menu_action(update, context, text)
