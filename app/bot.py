@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta, date
 from html import escape
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application, CommandHandler, ContextTypes, CallbackQueryHandler,
@@ -26,6 +26,24 @@ from app.models import Schedule, Homework, HomeworkFile, Feedback, ScheduleChang
 
 def current_monday():
     return week_monday()
+
+
+# Кнопки постоянного меню (появляются под полем ввода).
+BTN_SCHEDULE = '📅 Расписание на сегодня'
+BTN_CHANGES = '🔄 Изменения'
+BTN_HOMEWORK = '📝 Задать ДЗ'
+BTN_FEEDBACK = '✍️ Пожелание админу'
+BTN_HELP = '❓ Помощь'
+
+
+def main_menu(is_admin):
+    """Постоянная клавиатура. ДЗ показываем только админу."""
+    row1 = [BTN_SCHEDULE, BTN_CHANGES]
+    row2 = [BTN_FEEDBACK, BTN_HELP]
+    rows = [row1, row2]
+    if is_admin:
+        rows.insert(1, [BTN_HOMEWORK])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 # httpx логирует полный URL запроса, а в нём — токен бота. Приглушаем.
@@ -130,18 +148,29 @@ class ScheduleBot:
         finally:
             session.close()
         role = '👑 администратор' if is_admin else '👤 пользователь'
-        keyboard = [[InlineKeyboardButton('✍️ Написать админу', callback_data='fb:start')]]
         await update.message.reply_text(
             f'Привет, <b>{escape(u.full_name)}</b>! 📚\n'
             f'Твой Telegram ID: <code>{u.id}</code> ({role})\n\n'
-            'Команды:\n'
-            '/get_schedule — расписание на сегодня\n'
-            '/get_changes — последние изменения\n'
-            '/homework — задать ДЗ (только админ)\n'
-            '/feedback — написать пожелание админу\n'
-            '/help — справка',
+            'Выбери действие на кнопках внизу.',
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(keyboard))
+            reply_markup=main_menu(is_admin))
+
+    # ────────── Кнопки меню → существующие действия ──────────
+    async def _menu_action(self, update, context, text):
+        """Выполнить действие по нажатой кнопке. True, если текст был кнопкой."""
+        if text == BTN_SCHEDULE:
+            await self.get_schedule(update, context)
+        elif text == BTN_CHANGES:
+            await self.get_changes(update, context)
+        elif text == BTN_HOMEWORK:
+            await self.homework(update, context)
+        elif text == BTN_FEEDBACK:
+            await self.feedback(update, context)
+        elif text == BTN_HELP:
+            await self.help_command(update, context)
+        else:
+            return False
+        return True
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
@@ -528,6 +557,13 @@ class ScheduleBot:
 
     # ────────── Контент ДЗ: текст и файлы ──────────
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        text = (update.message.text or '').strip()
+        # Нажатие кнопки меню важнее любого режима: сбрасываем ввод и выполняем действие.
+        if text in (BTN_SCHEDULE, BTN_CHANGES, BTN_HOMEWORK, BTN_FEEDBACK, BTN_HELP):
+            context.user_data.pop('hw_schedule_id', None)
+            context.user_data.pop('feedback_mode', None)
+            await self._menu_action(update, context, text)
+            return
         if context.user_data.get('feedback_mode'):
             await self._handle_feedback(update, context)
             return
