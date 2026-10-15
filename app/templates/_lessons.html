@@ -33,7 +33,7 @@
         <tbody>
             {% for lesson in lessons %}
             <tr class="{% if highlight %}today-row{% endif %}">
-                <td class="num">{{ lesson.lesson_number }}</td>
+                <td class="num">{{ lesson.lesson_number }}{% if lesson.time_range %}<br><small class="text-muted">{{ lesson.time_range }}</small>{% endif %}</td>
                 <td class="subject fw-semibold">{{ lesson.subject }}</td>
                 <td><span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span></td>
                 <td class="teacher">{{ lesson.teacher or '—' }}</td>
@@ -52,7 +52,7 @@
     {% for lesson in lessons %}
     <div class="lesson-item {% if highlight %}today-row{% endif %}">
         <div class="lesson-head">
-            <span class="num-badge">{{ lesson.lesson_number }} пара</span>
+            <span class="num-badge">{{ lesson.lesson_number }} пара{% if lesson.time_range %} · {{ lesson.time_range }}{% endif %}</span>
             <span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span>
         </div>
         <div class="subject fw-semibold mb-1">{{ lesson.subject }}</div>

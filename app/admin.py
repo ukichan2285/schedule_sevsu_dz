@@ -7,10 +7,9 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
 from sqlalchemy import func
 
 from app.models import Session, User, Schedule, Homework, ScheduleChange, Feedback
+from app.ics_parser import DAY_NAMES, week_monday
 
 admin = Blueprint('admin', __name__)
-
-DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота']
 
 
 # ─────────── Авторизация ───────────
@@ -216,16 +215,11 @@ def users_delete(uid):
 
 # ─────────── Домашние задания ───────────
 
-def _week_monday(d=None):
-    d = d or datetime.now().date()
-    return d - timedelta(days=d.weekday())
-
-
 @admin.route('/admin/homework')
 @login_required
 def homework():
     offset = request.args.get('offset', 0, type=int)
-    monday = _week_monday() + timedelta(weeks=offset)
+    monday = week_monday() + timedelta(weeks=offset)
 
     s = Session()
     try:

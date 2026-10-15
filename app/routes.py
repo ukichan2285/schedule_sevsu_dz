@@ -1,20 +1,18 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, abort
+from flask import Blueprint, render_template, request, redirect, flash, jsonify, send_file, abort
 from datetime import datetime, timedelta
 from io import BytesIO
 
 from sqlalchemy.orm import joinedload
 
-from app.models import Schedule, Homework, HomeworkFile, ScheduleChange, Session, User
+from app.models import Schedule, Homework, HomeworkFile, ScheduleChange, Session
 from app.updater import run_update
+from app.ics_parser import DAY_NAMES, day_name_for, week_monday
 
 main = Blueprint('main', __name__)
 
-DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота']
-
 
 def current_monday():
-    d = datetime.now().date()
-    return d - timedelta(days=d.weekday())
+    return week_monday()
 
 
 def get_week_lessons(monday):
@@ -48,9 +46,9 @@ def get_day_lessons(day_name, monday):
 def index():
     """Расписание на сегодня (в рамках текущей учебной недели)."""
     monday = current_monday()
-    today_day = DAY_NAMES[datetime.now().weekday()] if datetime.now().weekday() < 6 else 'Воскресенье'
-    lessons = get_day_lessons(today_day, monday) if today_day in DAY_NAMES else []
-    return render_template('index.html', lessons=lessons, today=today_day,
+    today_day = day_name_for(datetime.now().date())
+    lessons = get_day_lessons(today_day, monday) if today_day else []
+    return render_template('index.html', lessons=lessons, today=today_day or 'Воскресенье',
                            monday=monday)
 
 
@@ -129,6 +127,8 @@ def _lesson_json(l):
         'id': l.id,
         'day_of_week': l.day_of_week,
         'lesson_number': l.lesson_number,
+        'time_start': l.time_start,
+        'time_end': l.time_end,
         'subject': l.subject,
         'teacher': l.teacher,
         'location': l.location,

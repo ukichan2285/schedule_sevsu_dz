@@ -15,7 +15,9 @@ BELLS = [
     (8, '20:40', '22:10'),
 ]
 
-DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
+# Учебные дни (без воскресенья). Единый источник для сайта, бота и админки.
+DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота']
+DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
 
 # Коды типов занятий из календаря SEVSU
 TYPE_MAP = {
@@ -113,11 +115,11 @@ def extract_teacher(description):
 
 
 def make_lesson(day_of_week, lesson_number, subject, teacher, location, lesson_type,
-                date=None, subgroup=None):
+                date=None, subgroup=None, time_start=None, time_end=None):
     now = datetime.now()
     if subgroup:
         lesson_type = f'{lesson_type} (подгр. {subgroup})'.strip()
-    hash_str = f'{day_of_week}|{lesson_number}|{subject}|{teacher}|{location}|{lesson_type}'
+    hash_str = f'{day_of_week}|{lesson_number}|{subject}|{teacher}|{location}|{lesson_type}|{time_start}|{time_end}'
     return {
         'day_of_week': day_of_week or '',
         'lesson_number': lesson_number,
@@ -125,6 +127,8 @@ def make_lesson(day_of_week, lesson_number, subject, teacher, location, lesson_t
         'teacher': teacher or '',
         'location': location or '',
         'lesson_type': lesson_type or '',
+        'time_start': time_start,
+        'time_end': time_end,
         'hash': hashlib.md5(hash_str.encode()).hexdigest(),
         'created_at': now,
         'updated_at': now,
@@ -132,11 +136,25 @@ def make_lesson(day_of_week, lesson_number, subject, teacher, location, lesson_t
     }
 
 
-def week_monday(d):
-    """Понедельник недели для даты/датетайма."""
+def week_monday(d=None):
+    """Понедельник недели для даты/датетайма (по умолчанию — сегодня)."""
+    if d is None:
+        d = datetime.now().date()
     if isinstance(d, datetime):
         d = d.date()
     return d - timedelta(days=d.weekday())
+
+
+def day_name_for(d):
+    """Название учебного дня для даты; воскресенье -> None."""
+    i = d.weekday()
+    return DAY_NAMES[i] if i < len(DAY_NAMES) else None
+
+
+def fmt_week(monday):
+    """'07.10–12.10.2026' для подписей недели."""
+    end = monday + timedelta(days=5)
+    return f"{monday.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}"
 
 
 def dedupe(lessons, key_func=None):
@@ -196,6 +214,10 @@ def parse_ics(text, week_offset=0, all_weeks=False, dedupe_weeks=False):
 
         day_of_week = DAY_NAMES[d.weekday()]
         lesson_number = pair_by_time(t)
+        # Реальное время пары берём из календаря (DTSTART/DTEND), а не из BELLS
+        _, end_t = parse_dt(ev.get('DTEND', ''))
+        time_start = t.strftime('%H:%M') if t else None
+        time_end = end_t.strftime('%H:%M') if end_t else None
         subgroup, lesson_type, subject = split_summary(ev.get('SUMMARY', ''))
         teacher = extract_teacher(ev.get('DESCRIPTION', ''))
         location = (ev.get('LOCATION', '') or '').strip()
@@ -209,6 +231,8 @@ def parse_ics(text, week_offset=0, all_weeks=False, dedupe_weeks=False):
             lesson_type=lesson_type,
             date=d,
             subgroup=subgroup,
+            time_start=time_start,
+            time_end=time_end,
         ))
 
     if all_weeks and dedupe_weeks:

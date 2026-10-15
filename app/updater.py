@@ -50,13 +50,14 @@ def fetch_ics(url=None, timeout=25):
     return r.text, None
 
 
-def _key(period_start, day, num, subject, teacher, location, ltype):
+def _key(period_start, day, num, subject, teacher, location, ltype, t_start=None, t_end=None):
     try:
         num = int(num) if num is not None else 0
     except (TypeError, ValueError):
         num = 0
+    # Время входит в ключ: сдвиг пары = удаление старой записи и вставка новой
     return (period_start, day or '', num, subject or '', teacher or '',
-            location or '', ltype or '')
+            location or '', ltype or '', t_start or '', t_end or '')
 
 
 def run_update(url=None, weeks_ahead=None, record_changes=True):
@@ -81,7 +82,8 @@ def run_update(url=None, weeks_ahead=None, record_changes=True):
         if p < cur_mon or p > max_mon:
             continue
         k = _key(p, l['day_of_week'], l['lesson_number'], l['subject'],
-                 l['teacher'], l['location'], l['lesson_type'])
+                 l['teacher'], l['location'], l['lesson_type'],
+                 l.get('time_start'), l.get('time_end'))
         new_map[k] = l
 
     session = Session()
@@ -96,7 +98,8 @@ def run_update(url=None, weeks_ahead=None, record_changes=True):
                     .all())
         existing_map = {
             _key(r.period_start, r.day_of_week, r.lesson_number, r.subject,
-                 r.teacher, r.location, r.lesson_type): r
+                 r.teacher, r.location, r.lesson_type,
+                 r.time_start, r.time_end): r
             for r in existing
         }
 
@@ -114,6 +117,8 @@ def run_update(url=None, weeks_ahead=None, record_changes=True):
                 teacher=l['teacher'],
                 location=l['location'],
                 lesson_type=l['lesson_type'],
+                time_start=l.get('time_start'),
+                time_end=l.get('time_end'),
                 hash=l['hash'],
                 created_at=l['created_at'],
                 updated_at=l['updated_at'],

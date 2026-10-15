@@ -63,6 +63,10 @@ def migrate():
 
     ensure_column('schedule', 'period_start',
                   'ALTER TABLE schedule ADD COLUMN period_start DATE')
+    ensure_column('schedule', 'time_start',
+                  'ALTER TABLE schedule ADD COLUMN time_start VARCHAR(5)')
+    ensure_column('schedule', 'time_end',
+                  'ALTER TABLE schedule ADD COLUMN time_end VARCHAR(5)')
     ensure_column('users', 'password_hash',
                   'ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)')
     ensure_column('homework_files', 'size',
@@ -155,14 +159,23 @@ class Schedule(Base):
     teacher = Column(String(200))
     location = Column(String(100))
     lesson_type = Column(String(50))
+    time_start = Column(String(5))       # 'HH:MM' из DTSTART календаря
+    time_end = Column(String(5))         # 'HH:MM' из DTEND календаря
     hash = Column(String(64))
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
     homework = relationship('Homework', back_populates='schedule', uselist=False,
                             cascade='all, delete-orphan')
-    
+
+    @property
+    def time_range(self):
+        """'08:30–10:00' или '' если времени нет."""
+        if self.time_start and self.time_end:
+            return f'{self.time_start}–{self.time_end}'
+        return self.time_start or ''
+
     def to_dict(self):
-        return {'id': self.id, 'day_of_week': self.day_of_week, 'lesson_number': self.lesson_number, 'subject': self.subject, 'teacher': self.teacher, 'location': self.location}
+        return {'id': self.id, 'day_of_week': self.day_of_week, 'lesson_number': self.lesson_number, 'time_start': self.time_start, 'time_end': self.time_end, 'subject': self.subject, 'teacher': self.teacher, 'location': self.location}
 
 class Homework(Base):
     __tablename__ = 'homework'

@@ -20,24 +20,19 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 
+from app.ics_parser import DAY_NAMES, DAY_SHORT, day_name_for, fmt_week, week_monday
+from app.models import Schedule, Homework, HomeworkFile, Feedback, ScheduleChange, Session, User
+
+
+def current_monday():
+    return week_monday()
+
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 # httpx логирует полный URL запроса, а в нём — токен бота. Приглушаем.
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
-DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота']
-DAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
 MAX_FILE_BYTES = 15 * 1024 * 1024  # лимит Bot API на скачивание файла ~20 МБ
-
-
-def current_monday():
-    d = datetime.now().date()
-    return d - timedelta(days=d.weekday())
-
-
-def fmt_week(monday):
-    end = monday + timedelta(days=5)
-    return f"{monday.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}"
 
 
 class ScheduleBot:
@@ -49,12 +44,10 @@ class ScheduleBot:
     # ────────── БД ──────────
     @staticmethod
     def _session():
-        from app.models import Session
         return Session()
 
     @staticmethod
     def _user(session, tg_id):
-        from app.models import User
         return session.query(User).filter(User.telegram_id == tg_id).first()
 
     @classmethod
@@ -63,8 +56,18 @@ class ScheduleBot:
         return bool(u and u.role == 'admin' and u.is_active)
 
     @staticmethod
+    def _weeks_with_lessons(session):
+        """Учебные недели для выбора ДЗ: текущая и ближайшие (до 8 штук)."""
+        rows = (session.query(Schedule.period_start)
+                .filter(Schedule.period_start.isnot(None))
+                .distinct().order_by(Schedule.period_start).all())
+        weeks = [r[0] for r in rows]
+        cm = current_monday()
+        upcoming = [w for w in weeks if w >= cm - timedelta(days=7)][:8]
+        return upcoming or weeks[-8:]
+
+    @staticmethod
     def _get_or_create_homework(session, schedule_id, author_db_id):
-        from app.models import Homework
         hw = session.query(Homework).filter(Homework.schedule_id == schedule_id).first()
         if hw is None:
             hw = Homework(schedule_id=schedule_id, user_id=author_db_id,
@@ -152,12 +155,11 @@ class ScheduleBot:
             parse_mode=ParseMode.HTML)
 
     async def get_schedule(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        from app.models import Schedule
         session = self._session()
         try:
             today = datetime.now().date()
-            monday = today - timedelta(days=today.weekday())
-            day = DAY_NAMES[today.weekday()] if today.weekday() < 6 else 'Воскресенье'
+            monday = week_monday(today)
+            day = day_name_for(today) or 'Воскресенье'
             items = (session.query(Schedule)
                      .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
                      .order_by(Schedule.lesson_number).all())
@@ -165,7 +167,8 @@ class ScheduleBot:
             if not items:
                 lines.append('Занятий нет.')
             for l in items:
-                lines.append(f'\n<b>#{l.lesson_number} {escape(l.subject or "")}</b>')
+                time_part = f' ({l.time_range})' if l.time_range else ''
+                lines.append(f'\n<b>#{l.lesson_number}{time_part} {escape(l.subject or "")}</b>')
                 if l.teacher:
                     lines.append(f'  👤 {escape(l.teacher)}')
                 if l.location:
@@ -177,7 +180,6 @@ class ScheduleBot:
         await update.message.reply_text('\n'.join(lines), parse_mode=ParseMode.HTML)
 
     async def get_changes(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        from app.models import ScheduleChange
         session = self._session()
         try:
             changes = (session.query(ScheduleChange)
@@ -201,17 +203,11 @@ class ScheduleBot:
             if not self._is_admin(session, u.id):
                 await update.message.reply_text('❌ Заполнять ДЗ может только администратор.')
                 return
-            from app.models import Schedule
-            rows = (session.query(Schedule.period_start)
-                    .filter(Schedule.period_start.isnot(None))
-                    .distinct().order_by(Schedule.period_start).all())
-            weeks = [r[0] for r in rows]
+            weeks = self._weeks_with_lessons(session)
         finally:
             session.close()
 
         cm = current_monday()
-        upcoming = [w for w in weeks if w >= cm - timedelta(days=7)][:8]
-        weeks = upcoming or weeks[-8:]
         if not weeks:
             await update.message.reply_text('Расписание пустое — нечего заполнять.')
             return
@@ -280,7 +276,6 @@ class ScheduleBot:
 
         context.user_data.pop('feedback_mode', None)
 
-        from app.models import Feedback
         session = self._session()
         try:
             db_user = self._user(session, u.id)
@@ -318,7 +313,6 @@ class ScheduleBot:
     def _admin_ids(self):
         """ID админов: из конфига и из БД (role='admin')."""
         from app import config
-        from app.models import User
         ids = set()
         for value in (config.ADMIN_TELEGRAM_ID, config.TELEGRAM_ADMIN_ID):
             try:
@@ -429,7 +423,6 @@ class ScheduleBot:
 
     # ────────── Инлайн-кнопки ──────────
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        from app.models import Schedule
         query = update.callback_query
         await query.answer()
         u = update.effective_user
@@ -513,7 +506,6 @@ class ScheduleBot:
                 await query.edit_message_text('Отменено.')
 
             elif kind == 'clear':
-                from app.models import Homework
                 schedule_id = int(parts[2])
                 hw = session.query(Homework).filter(Homework.schedule_id == schedule_id).first()
                 if hw:
@@ -525,14 +517,8 @@ class ScheduleBot:
             session.close()
 
     async def _send_weeks(self, query, context, session):
-        from app.models import Schedule
-        rows = (session.query(Schedule.period_start)
-                .filter(Schedule.period_start.isnot(None))
-                .distinct().order_by(Schedule.period_start).all())
-        weeks = [r[0] for r in rows]
+        weeks = self._weeks_with_lessons(session)
         cm = current_monday()
-        upcoming = [w for w in weeks if w >= cm - timedelta(days=7)][:8]
-        weeks = upcoming or weeks[-8:]
         keyboard = []
         for w in weeks:
             label = fmt_week(w) + (' · текущая' if w == cm else '')
@@ -581,7 +567,6 @@ class ScheduleBot:
                                     doc.file_name or f'doc_{doc.file_unique_id}')
 
     async def _save_attachment(self, update, context, schedule_id, file_id, mime, name):
-        from app.models import HomeworkFile
         u = update.effective_user
         try:
             tg_file = await context.bot.get_file(file_id)
