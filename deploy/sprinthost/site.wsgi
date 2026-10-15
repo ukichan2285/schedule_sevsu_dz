@@ -49,8 +49,13 @@ try:
     from app import create_app  # noqa: E402
 
     application = _NoScriptName(create_app())
+    # Пишем в лог только безопасную часть строки подключения: БЕЗ пароля.
+    _db = os.environ.get('DATABASE_URL', '') or '(sqlite)'
+    if '@' in _db:
+        _db = _db.split('@', 1)[1]  # host:port/dbname, без user:password
+        _db = _db.split('://', 1)[-1] if '://' in _db else _db
     with open(_LOG, 'a') as _f:
-        _f.write('OK db=%s\n' % (os.environ.get('DATABASE_URL', '')))
+        _f.write('OK db=***@%s\n' % _db)
 except Exception:  # noqa: BLE001
     with open(_LOG, 'a') as _f:
         _f.write('===== ERROR =====\n')
