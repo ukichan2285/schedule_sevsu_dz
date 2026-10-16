@@ -7,6 +7,34 @@
 </div>
 
 <div class="card mb-4">
+    <div class="card-header">🎓 Создать заполняющего ДЗ</div>
+    <div class="card-body">
+        <p class="small text-muted mb-2">Без пароля: человек заходит в бот по своему Telegram ID и может заполнять ДЗ.</p>
+        <form method="POST" action="/admin/homework-users/create" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Telegram ID *</label>
+                <input type="text" name="telegram_id" class="form-control" required inputmode="numeric" placeholder="например 123456789">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Username (необязательно)</label>
+                <input type="text" name="username" class="form-control" placeholder="без @">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Имя</label>
+                <input type="text" name="first_name" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Фамилия</label>
+                <input type="text" name="last_name" class="form-control">
+            </div>
+            <div class="col-md-3 d-grid">
+                <button class="btn btn-success">+ Добавить ДЗ-шника</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
     <div class="card-header">Создать аккаунт</div>
     <div class="card-body">
         <form method="POST" action="/admin/users/create" class="row g-2 align-items-end">
@@ -64,6 +92,7 @@
                 <label class="form-label small text-muted">Роль</label>
                 <select name="role" class="form-select form-select-sm">
                     <option value="user" {% if u.role == 'user' %}selected{% endif %}>user</option>
+                    <option value="homework" {% if u.role == 'homework' %}selected{% endif %}>заполняющий ДЗ</option>
                     <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>admin</option>
                 </select>
             </div>

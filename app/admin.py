@@ -156,6 +156,49 @@ def users_create():
     return redirect(url_for('admin.users'))
 
 
+@admin.route('/admin/homework-users/create', methods=['POST'])
+@admin_required
+def homework_user_create():
+    """Заполняющий ДЗ: вход только через Telegram, пароль не нужен.
+
+    Регистрируется по Telegram ID (обязательно) и, по желанию, username.
+    Бот пускает такого пользователя по telegram_id при первом же обращении.
+    """
+    raw_tid = (request.form.get('telegram_id') or '').strip()
+    username = (request.form.get('username') or '').strip() or None
+    first_name = (request.form.get('first_name') or '').strip() or None
+    last_name = (request.form.get('last_name') or '').strip() or None
+
+    if not raw_tid.isdigit():
+        flash('Telegram ID должен быть числом', 'error')
+        return redirect(url_for('admin.users'))
+    tid = int(raw_tid)
+
+    s = Session()
+    try:
+        if s.query(User).filter(User.telegram_id == tid).first():
+            flash(f'Пользователь с Telegram ID {tid} уже есть', 'error')
+            return redirect(url_for('admin.users'))
+        if username and s.query(User).filter(User.username == username).first():
+            flash(f'Имя «{username}» уже занято', 'error')
+            return redirect(url_for('admin.users'))
+
+        s.add(User(
+            telegram_id=tid,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            role='homework',
+            is_active=True,
+            created_at=datetime.now(),
+        ))
+        s.commit()
+        flash(f'Заполняющий ДЗ добавлен (Telegram ID {tid})', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.users'))
+
+
 @admin.route('/admin/users/<int:uid>/edit', methods=['POST'])
 @admin_required
 def users_edit(uid):
@@ -172,7 +215,7 @@ def users_edit(uid):
         u.first_name = (request.form.get('first_name') or '').strip() or None
         u.last_name = (request.form.get('last_name') or '').strip() or None
         role = request.form.get('role')
-        if role in ('admin', 'user'):
+        if role in ('admin', 'user', 'homework'):
             u.role = role
         u.is_active = request.form.get('is_active') == 'on'
 

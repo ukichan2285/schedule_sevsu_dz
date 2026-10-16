@@ -35,10 +35,10 @@ BTN_FEEDBACK = '✍️ Пожелание админу'
 BTN_HELP = '❓ Помощь'
 
 
-def main_menu(is_admin):
-    """Постоянная клавиатура. ДЗ показываем только админу."""
+def main_menu(can_hw):
+    """Постоянная клавиатура. «Задать ДЗ» — админам и заполняющим ДЗ."""
     rows = [[BTN_SCHEDULE], [BTN_FEEDBACK, BTN_HELP]]
-    if is_admin:
+    if can_hw:
         rows.insert(1, [BTN_HOMEWORK])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
@@ -69,6 +69,12 @@ class ScheduleBot:
     def _is_admin(cls, session, tg_id):
         u = cls._user(session, tg_id)
         return bool(u and u.role == 'admin' and u.is_active)
+
+    @classmethod
+    def _can_homework(cls, session, tg_id):
+        """Право заполнять ДЗ: админ или назначенный «заполняющий ДЗ»."""
+        u = cls._user(session, tg_id)
+        return bool(u and u.role in ('admin', 'homework') and u.is_active)
 
     @staticmethod
     def _weeks_with_lessons(session):
@@ -142,15 +148,21 @@ class ScheduleBot:
         session = self._session()
         try:
             is_admin = self._is_admin(session, u.id)
+            can_hw = self._can_homework(session, u.id)
         finally:
             session.close()
-        role = '👑 администратор' if is_admin else '👤 пользователь'
+        if is_admin:
+            role = '👑 администратор'
+        elif can_hw:
+            role = '📝 заполняющий ДЗ'
+        else:
+            role = '👤 пользователь'
         await update.message.reply_text(
             f'Привет, <b>{escape(u.full_name)}</b>! 📚\n'
             f'Твой Telegram ID: <code>{u.id}</code> ({role})\n\n'
             'Выбери действие на кнопках внизу.',
             parse_mode=ParseMode.HTML,
-            reply_markup=main_menu(is_admin))
+            reply_markup=main_menu(can_hw))
 
     # ────────── Кнопки меню → существующие действия ──────────
     async def _menu_action(self, update, context, text):
@@ -224,7 +236,7 @@ class ScheduleBot:
         u = update.effective_user
         session = self._session()
         try:
-            if not self._is_admin(session, u.id):
+            if not self._can_homework(session, u.id):
                 await update.message.reply_text('❌ Заполнять ДЗ может только администратор.')
                 return
             weeks = self._weeks_with_lessons(session)
@@ -453,7 +465,7 @@ class ScheduleBot:
 
         session = self._session()
         try:
-            if not self._is_admin(session, u.id):
+            if not self._can_homework(session, u.id):
                 await query.edit_message_text('❌ Нет прав.')
                 return
 
@@ -569,7 +581,7 @@ class ScheduleBot:
         text = update.message.text or ''
         session = self._session()
         try:
-            if not self._is_admin(session, u.id):
+            if not self._can_homework(session, u.id):
                 return
             db_user = self._user(session, u.id)
             hw = self._get_or_create_homework(session, schedule_id, db_user.id)
@@ -610,7 +622,7 @@ class ScheduleBot:
             return
         session = self._session()
         try:
-            if not self._is_admin(session, u.id):
+            if not self._can_homework(session, u.id):
                 return
             db_user = self._user(session, u.id)
             hw = self._get_or_create_homework(session, schedule_id, db_user.id)
