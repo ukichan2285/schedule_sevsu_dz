@@ -35,6 +35,11 @@ BTN_FEEDBACK = '✍️ Пожелание админу'
 BTN_HELP = '❓ Помощь'
 
 
+def is_lecture(lesson):
+    """Лекции ДЗ не заполняются: тип «лекция» (с подгруппой или без)."""
+    return 'лекци' in (lesson.lesson_type or '').lower()
+
+
 def main_menu(can_hw):
     """Постоянная клавиатура. «Задать ДЗ» — админам и заполняющим ДЗ."""
     rows = [[BTN_SCHEDULE], [BTN_FEEDBACK, BTN_HELP]]
@@ -493,9 +498,10 @@ class ScheduleBot:
             elif kind == 'd':  # hw:d:<monday>:<day_index> — выбор пары
                 monday = date.fromisoformat(parts[2])
                 day = DAY_NAMES[int(parts[3])]
-                lessons = (session.query(Schedule)
-                           .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
-                           .order_by(Schedule.lesson_number).all())
+                lessons = [l for l in (session.query(Schedule)
+                                       .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
+                                       .order_by(Schedule.lesson_number).all())
+                           if not is_lecture(l)]
                 keyboard = []
                 for l in lessons:
                     has = '📝 ' if (l.homework and (l.homework.text or l.homework.files)) else ''
@@ -512,6 +518,9 @@ class ScheduleBot:
                 if not l:
                     await query.edit_message_text('Занятие не найдено.')
                     return
+                if is_lecture(l):
+                    await query.edit_message_text('Для лекций ДЗ не заполняется.')
+                    return
                 context.user_data['hw_schedule_id'] = schedule_id
                 desc = ''
                 hw = l.homework
@@ -522,7 +531,7 @@ class ScheduleBot:
                 keyboard = [
                     [InlineKeyboardButton('✅ Готово', callback_data='hw:done')],
                     [InlineKeyboardButton('🗑 Очистить ДЗ', callback_data=f'hw:clear:{schedule_id}')],
-                    [InlineKeyboardButton('« Отмена', callback_data='hw:cancel')],
+                    [InlineKeyboardButton('« К парам', callback_data=f'hw:dayof:{schedule_id}')],
                 ]
                 await query.edit_message_text(
                     f'✍️ <b>#{l.lesson_number} {escape(l.subject or "")}</b>\n'
@@ -532,6 +541,28 @@ class ScheduleBot:
                     + desc,
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode=ParseMode.HTML)
+
+            elif kind == 'dayof':  # hw:dayof:<schedule_id> — назад к парам дня
+                context.user_data.pop('hw_schedule_id', None)
+                l = session.get(Schedule, int(parts[2]))
+                if not l or not l.period_start or l.day_of_week not in DAY_NAMES:
+                    await query.edit_message_text('Занятие не найдено.')
+                    return
+                monday = l.period_start
+                day = l.day_of_week
+                lessons = [x for x in (session.query(Schedule)
+                                       .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
+                                       .order_by(Schedule.lesson_number).all())
+                           if not is_lecture(x)]
+                keyboard = []
+                for x in lessons:
+                    has = '📝 ' if (x.homework and (x.homework.text or x.homework.files)) else ''
+                    label = f'{has}#{x.lesson_number} {x.subject or ""}'.strip()[:60]
+                    keyboard.append([InlineKeyboardButton(label, callback_data=f'hw:l:{x.id}')])
+                keyboard.append([InlineKeyboardButton('« Дни', callback_data=f'hw:w:{monday.isoformat()}')])
+                await query.edit_message_text(
+                    f'🗓 {day}, неделя {fmt_week(monday)}. Выбери пару:',
+                    reply_markup=InlineKeyboardMarkup(keyboard))
 
             elif kind == 'done':
                 context.user_data.pop('hw_schedule_id', None)
