@@ -4,6 +4,23 @@ DirectoryIndex site.wsgi
 Options +ExecCGI
 AddHandler wsgi-script .wsgi
 RewriteEngine On
+
+# --- HTTPS ---
+# ВАЖНО: перед Apache стоит openresty (nginx), TLS терминируется там.
+# Поэтому %{HTTPS} в Apache всегда off, а реальная схема приходит в X-Forwarded-Proto.
+# Условие по %{HTTPS} даёт бесконечный редирект — используем только X-Forwarded-Proto.
+
+# 1) Duck DNS-алиас: сертификата на нём нет → канонический редирект на основной домен
+RewriteCond %{HTTP_HOST} ^schedule-sevsu\.duckdns\.org$ [NC]
+RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+RewriteRule ^(.*)$ https://schedule-sevsu.ru/$1 [R=301,L]
+
+# 2) Основной домен (и www): всё на https, ACME-проверку не трогаем
+RewriteCond %{HTTP_HOST} ^(www\.)?schedule-sevsu\.ru$ [NC]
+RewriteCond %{HTTP:X-Forwarded-Proto} !https [NC]
+RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/
+RewriteRule ^(.*)$ https://schedule-sevsu.ru/$1 [R=301,L]
+
 # корень сайта — сразу в приложение (иначе редирект на /site.wsgi/)
 RewriteRule ^$ site.wsgi/ [L]
 RewriteCond %{REQUEST_FILENAME} !-f

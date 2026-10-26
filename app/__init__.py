@@ -6,6 +6,15 @@ from app import config
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = config.SECRET_KEY
+    if config.HTTPS_ENABLED:
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        # За Apache/uWSGI: доверяем X-Forwarded-Proto, чтобы url_for и редиректы давали https
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+        app.config.update(
+            PREFERRED_URL_SCHEME='https',
+            SESSION_COOKIE_SECURE=True,
+            REMEMBER_COOKIE_SECURE=True,
+        )
 
     # Инициализация БД + миграции
     init_db()

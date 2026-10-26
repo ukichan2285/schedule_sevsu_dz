@@ -35,6 +35,8 @@ SCHEDULE_DB_PATH = _get('SCHEDULE_DB_PATH', '')
 
 # Flask
 SECRET_KEY = _get('SECRET_KEY', 'dev-secret-change-me')
+# HTTPS включён (домен + SSL-сертификат выпущены). Сайт редиректит на https.
+HTTPS_ENABLED = _get('HTTPS_ENABLED', '0') == '1'
 # Для продакшена на Render/любом хостинге
 PORT = int(_get('PORT', '5000'))
 FLASK_DEBUG = _get('FLASK_DEBUG', '0') == '1'
