@@ -70,8 +70,13 @@ def day_schedule(day_name):
     offset = request.args.get('offset', 0, type=int)
     monday = current_monday() + timedelta(weeks=offset)
     lessons = get_day_lessons(day_name, monday)
+    today_name = day_name_for(datetime.now().date())
+    # Живая шкала имеет смысл только для текущей недели и сегодняшнего дня:
+    # иначе на странице будущей/прошлой недели показывалось бы «идёт пара»
+    # по времени сегодняшнего дня.
+    is_today = (offset == 0 and day_name == today_name)
     return render_template('day.html', lessons=lessons, day=day_name,
-                           monday=monday, offset=offset)
+                           monday=monday, offset=offset, is_today=is_today)
 
 
 @main.route('/changes')

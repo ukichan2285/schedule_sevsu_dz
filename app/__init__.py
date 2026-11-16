@@ -32,4 +32,13 @@ def create_app():
     from app.markdown_render import render as render_md
     app.add_template_filter(render_md, 'md')
 
+    # Серверное «сейчас» для живой шкалы времени: JS на странице считает
+    # расхождение своих часов с сервером и тикает по этому смещению, чтобы
+    # шкала не расходилась с расписанием при другом часовом поясе браузера.
+    from datetime import datetime as _datetime
+
+    @app.context_processor
+    def _inject_server_now():
+        return {'server_now': _datetime.now().isoformat(timespec='seconds')}
+
     return app

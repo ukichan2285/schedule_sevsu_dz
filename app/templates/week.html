@@ -28,8 +28,8 @@
             <h3 class="mb-0 fs-5">{{ day }}</h3>
             <span class="opacity-75">{{ date.strftime('%d.%m') }}{% if is_today %} · сегодня{% endif %}</span>
         </div>
-        {{ lessons_table(day_lessons, highlight=is_today) }}
-        {{ lessons_list(day_lessons, highlight=is_today) }}
+        {{ lessons_table(day_lessons, highlight=is_today, live=is_today) }}
+        {{ lessons_list(day_lessons, highlight=is_today, live=is_today) }}
         <div class="mb-4"></div>
         {% endif %}
         {% endfor %}

@@ -1,3 +1,15 @@
+{# Живая шкала «до конца пары»: место под неё зарезервировано заранее
+   (фиксированная высота, невидимое состояние), поэтому появление/исчезновение
+   не сдвигает соседние строки и карточки. #}
+{% macro live_block(short_text=false) %}
+<div class="lesson-live" data-live>
+    <div class="progress lesson-live-progress" role="progressbar" aria-label="До конца пары" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="progress-bar lesson-live-bar" data-live-bar></div>
+    </div>
+    <small class="lesson-live-text" data-live-text{% if short_text %} data-short{% endif %}></small>
+</div>
+{% endmacro %}
+
 {% macro homework_block(hw, label='ДЗ:') %}
     {% if hw and (hw.text or hw.files) %}
     <div class="homework-box">
@@ -17,7 +29,7 @@
 {% endmacro %}
 
 {# Таблица для десктопа/планшета #}
-{% macro lessons_table(lessons, show_day=false, highlight=false) %}
+{% macro lessons_table(lessons, show_day=false, highlight=false, live=false) %}
 <div class="table-responsive d-none d-md-block">
     <table class="table table-bordered table-hover bg-white align-middle schedule-table mb-0">
         <thead class="table-dark">
@@ -32,8 +44,9 @@
         </thead>
         <tbody>
             {% for lesson in lessons %}
-            <tr class="{% if highlight %}today-row{% endif %}">
-                <td class="num">{{ lesson.lesson_number }}{% if lesson.time_range %}<br><small class="text-muted">{{ lesson.time_range }}</small>{% endif %}</td>
+            {% set has_time = lesson.time_start and lesson.time_end %}
+            <tr class="{% if highlight %}today-row{% endif %}"{% if live and has_time %} data-lesson-start="{{ lesson.time_start }}" data-lesson-end="{{ lesson.time_end }}"{% endif %}>
+                <td class="num">{{ lesson.lesson_number }}{% if lesson.time_range %}<br><small class="text-muted">{{ lesson.time_range }}</small>{% endif %}{% if live and has_time %}{{ live_block(short_text=true) }}{% endif %}</td>
                 <td class="subject fw-semibold">{{ lesson.subject }}</td>
                 <td><span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span></td>
                 <td class="teacher">{{ lesson.teacher or '—' }}</td>
@@ -47,14 +60,16 @@
 {% endmacro %}
 
 {# Список-карточки для телефона #}
-{% macro lessons_list(lessons, highlight=false) %}
+{% macro lessons_list(lessons, highlight=false, live=false) %}
 <div class="lesson-list d-md-none">
     {% for lesson in lessons %}
-    <div class="lesson-item {% if highlight %}today-row{% endif %}">
+    {% set has_time = lesson.time_start and lesson.time_end %}
+    <div class="lesson-item {% if highlight %}today-row{% endif %}"{% if live and has_time %} data-lesson-start="{{ lesson.time_start }}" data-lesson-end="{{ lesson.time_end }}"{% endif %}>
         <div class="lesson-head">
             <span class="num-badge">{{ lesson.lesson_number }} пара{% if lesson.time_range %} · {{ lesson.time_range }}{% endif %}</span>
             <span class="badge bg-primary">{{ lesson.lesson_type or 'занятие' }}</span>
         </div>
+        {% if live and has_time %}{{ live_block() }}{% endif %}
         <div class="subject fw-semibold mb-1">{{ lesson.subject }}</div>
         <div class="small">
             {% if lesson.teacher %}<div class="teacher"><i class="bi bi-person-badge"></i> {{ lesson.teacher }}</div>{% endif %}

@@ -9,8 +9,8 @@
         </h2>
 
         {% if lessons %}
-        {{ lessons_table(lessons) }}
-        {{ lessons_list(lessons) }}
+        {{ lessons_table(lessons, live=is_today) }}
+        {{ lessons_list(lessons, live=is_today) }}
         {% else %}
         <div class="alert alert-info text-center">
             <i class="bi bi-info-circle"></i> Расписание на {{ day }} отсутствует

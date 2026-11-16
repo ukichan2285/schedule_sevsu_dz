@@ -7,8 +7,8 @@
         <h2 class="text-center mb-4">Расписание на {{ today }}</h2>
 
         {% if lessons %}
-        {{ lessons_table(lessons) }}
-        {{ lessons_list(lessons) }}
+        {{ lessons_table(lessons, live=true) }}
+        {{ lessons_list(lessons, live=true) }}
         {% else %}
         <div class="alert alert-info text-center">
             <i class="bi bi-info-circle"></i> Расписание на сегодня отсутствует
