@@ -14,7 +14,7 @@ import re
 from datetime import datetime, timedelta, date, time
 from html import escape
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, BotCommand, BotCommandScopeAllGroupChats
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application, CommandHandler, ContextTypes, CallbackQueryHandler,
@@ -164,6 +164,35 @@ class ScheduleBot:
             label += ' · завтра'
         return label[:60]
 
+    # ────────── Состояние ввода (привязано к чату, чтобы работало в группах) ──────────
+    @staticmethod
+    def _set_hw_state(context, chat_id, schedule_id):
+        context.user_data['hw_schedule_id'] = {'chat_id': chat_id, 'schedule_id': schedule_id}
+
+    @staticmethod
+    def _get_hw_state(context, chat_id):
+        state = context.user_data.get('hw_schedule_id')
+        if isinstance(state, dict) and state.get('chat_id') == chat_id:
+            return state.get('schedule_id')
+        return None
+
+    @staticmethod
+    def _clear_hw_state(context):
+        context.user_data.pop('hw_schedule_id', None)
+
+    @staticmethod
+    def _set_feedback_state(context, chat_id):
+        context.user_data['feedback_mode'] = {'chat_id': chat_id, 'enabled': True}
+
+    @staticmethod
+    def _is_feedback_state(context, chat_id):
+        state = context.user_data.get('feedback_mode')
+        return isinstance(state, dict) and state.get('chat_id') == chat_id and state.get('enabled')
+
+    @staticmethod
+    def _clear_feedback_state(context):
+        context.user_data.pop('feedback_mode', None)
+
     # ────────── Приложение ──────────
     def create_application(self):
         from app import config
@@ -178,7 +207,7 @@ class ScheduleBot:
 
         application.add_handler(CommandHandler('start', self.start))
         application.add_handler(CommandHandler('help', self.help_command))
-        application.add_handler(CommandHandler(['get_schedule', 'schedule'], self.get_schedule))
+        application.add_handler(CommandHandler(['get_schedule', 'schedule', 'raspisanie'], self.get_schedule))
         application.add_handler(CommandHandler(['get_changes', 'changes'], self.get_changes))
         application.add_handler(CommandHandler(['homework', 'set_homework', 'dz'], self.homework))
         application.add_handler(CommandHandler(['feedback', 'suggest', 'idea'], self.feedback))
@@ -187,6 +216,7 @@ class ScheduleBot:
 
         application.add_handler(CallbackQueryHandler(self.on_callback, pattern=r'^hw:'))
         application.add_handler(CallbackQueryHandler(self.on_feedback_callback, pattern=r'^fb:'))
+        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, self.on_new_chat_members))
         application.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
         application.add_handler(MessageHandler(filters.Document.IMAGE, self.on_document))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
@@ -199,6 +229,24 @@ class ScheduleBot:
         return application
 
     async def _post_init(self, application):
+        commands = [
+            BotCommand('start', 'Начать'),
+            BotCommand('help', 'Помощь'),
+            BotCommand('get_schedule', 'Расписание на сегодня'),
+            BotCommand('raspisanie', 'Расписание на сегодня'),
+            BotCommand('get_changes', 'Изменения в расписании'),
+            BotCommand('homework', 'Задать ДЗ'),
+            BotCommand('done', 'Готово'),
+            BotCommand('cancel', 'Отмена'),
+            BotCommand('feedback', 'Пожелание админу'),
+        ]
+        try:
+            await application.bot.set_my_commands(commands)
+            await application.bot.set_my_commands(commands, scope=BotCommandScopeAllGroupChats())
+            logger.info('Команды бота установлены')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Не удалось установить команды бота: %s', exc)
+
         try:
             application.create_task(self._resend_loop(application))
             logger.info('Фоновая досылка пожеланий запущена')
@@ -207,6 +255,18 @@ class ScheduleBot:
 
     async def on_error(self, update, context):
         logger.warning('Ошибка обработки запроса: %s', context.error)
+
+    async def on_new_chat_members(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not context.bot.username:
+            return
+        for member in update.message.new_chat_members:
+            if member.username and member.username.lower() == context.bot.username.lower():
+                await update.message.reply_text(
+                    'Привет! Я бот с расписанием занятий. '
+                    'Напишите /raspisanie, чтобы получить расписание на сегодня, '
+                    'или /help для справки.',
+                    parse_mode=ParseMode.HTML)
+                return
 
     # ────────── Команды ──────────
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -310,8 +370,8 @@ class ScheduleBot:
         finally:
             session.close()
 
-        context.user_data.pop('hw_schedule_id', None)
-        context.user_data.pop('feedback_mode', None)
+        self._clear_hw_state(context)
+        self._clear_feedback_state(context)
 
         if not subjects:
             await update.message.reply_text('Расписание пустое — нечего заполнять.')
@@ -327,19 +387,21 @@ class ScheduleBot:
             parse_mode=ParseMode.HTML)
 
     async def done(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data.pop('hw_schedule_id', None)
+        self._clear_hw_state(context)
         await update.message.reply_text('✅ Готово. ДЗ сохранено.')
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        had_feedback = context.user_data.pop('feedback_mode', None)
-        context.user_data.pop('hw_schedule_id', None)
+        chat_id = update.effective_chat.id
+        had_feedback = self._is_feedback_state(context, chat_id)
+        self._clear_feedback_state(context)
+        self._clear_hw_state(context)
         await update.message.reply_text('Отменено.' if not had_feedback else 'Отменено. Пожелание не отправлено.')
 
     # ────────── Обратная связь (пожелания админу) ──────────
     async def feedback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Старт режима отправки пожелания администратору."""
-        context.user_data.pop('hw_schedule_id', None)
-        context.user_data['feedback_mode'] = True
+        self._clear_hw_state(context)
+        self._set_feedback_state(context, update.effective_chat.id)
         await update.message.reply_text(
             '✍️ Напишите одним сообщением ваше пожелание или предложение '
             'по боту и приложению — оно уйдёт администратору.\n\n'
@@ -355,8 +417,8 @@ class ScheduleBot:
         kind = parts[1] if len(parts) > 1 else ''
 
         if kind == 'start':
-            context.user_data.pop('hw_schedule_id', None)
-            context.user_data['feedback_mode'] = True
+            self._clear_hw_state(context)
+            self._set_feedback_state(context, update.effective_chat.id)
             await query.edit_message_text(
                 '✍️ Напишите одним сообщением ваше пожелание или предложение '
                 'по боту и приложению — оно уйдёт администратору.\n\n'
@@ -366,7 +428,7 @@ class ScheduleBot:
                 parse_mode=ParseMode.HTML)
 
         elif kind == 'cancel':
-            context.user_data.pop('feedback_mode', None)
+            self._clear_feedback_state(context)
             await query.edit_message_text('Отменено. Пожелание не отправлено.')
 
     async def _handle_feedback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -379,7 +441,7 @@ class ScheduleBot:
         if len(text) > 4000:
             text = text[:4000]
 
-        context.user_data.pop('feedback_mode', None)
+        self._clear_feedback_state(context)
 
         session = self._session()
         try:
@@ -606,7 +668,7 @@ class ScheduleBot:
                 if is_lecture(l):
                     await query.edit_message_text('Для лекций ДЗ не заполняется.')
                     return
-                context.user_data['hw_schedule_id'] = schedule_id
+                self._set_hw_state(context, update.effective_chat.id, schedule_id)
                 desc = ''
                 hw = l.homework
                 if hw and hw.text:
@@ -629,11 +691,11 @@ class ScheduleBot:
                     parse_mode=ParseMode.HTML)
 
             elif kind == 'done':
-                context.user_data.pop('hw_schedule_id', None)
+                self._clear_hw_state(context)
                 await query.edit_message_text('✅ ДЗ сохранено.')
 
             elif kind == 'cancel':
-                context.user_data.pop('hw_schedule_id', None)
+                self._clear_hw_state(context)
                 await query.edit_message_text('Отменено.')
 
             elif kind == 'clear':
@@ -642,7 +704,7 @@ class ScheduleBot:
                 if hw:
                     session.delete(hw)  # файлы удалятся каскадом
                     session.commit()
-                context.user_data.pop('hw_schedule_id', None)
+                self._clear_hw_state(context)
                 await query.edit_message_text('🗑 ДЗ очищено (текст и вложения удалены).')
         finally:
             session.close()
@@ -666,15 +728,17 @@ class ScheduleBot:
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = (update.message.text or '').strip()
         # Нажатие кнопки меню важнее любого режима: сбрасываем ввод и выполняем действие.
+        chat_id = update.effective_chat.id
         if text in (BTN_SCHEDULE, BTN_HOMEWORK, BTN_FEEDBACK, BTN_HELP):
-            context.user_data.pop('hw_schedule_id', None)
-            context.user_data.pop('feedback_mode', None)
+            self._clear_hw_state(context)
+            self._clear_feedback_state(context)
             await self._menu_action(update, context, text)
             return
-        if context.user_data.get('feedback_mode'):
+        if self._is_feedback_state(context, chat_id):
+            self._clear_feedback_state(context)
             await self._handle_feedback(update, context)
             return
-        schedule_id = context.user_data.get('hw_schedule_id')
+        schedule_id = self._get_hw_state(context, chat_id)
         if not schedule_id:
             return  # обычное сообщение вне режима ввода ДЗ — игнорируем
         u = update.effective_user
@@ -693,7 +757,7 @@ class ScheduleBot:
         await update.message.reply_text('📝 Текст сохранён. Пришли фото или нажми «✅ Готово».')
 
     async def on_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        schedule_id = context.user_data.get('hw_schedule_id')
+        schedule_id = self._get_hw_state(context, update.effective_chat.id)
         if not schedule_id:
             return
         photo = update.message.photo[-1]  # максимальный размер
@@ -701,7 +765,7 @@ class ScheduleBot:
                                     'image/jpeg', f'photo_{photo.file_unique_id}.jpg')
 
     async def on_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        schedule_id = context.user_data.get('hw_schedule_id')
+        schedule_id = self._get_hw_state(context, update.effective_chat.id)
         if not schedule_id:
             return
         doc = update.message.document
