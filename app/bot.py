@@ -332,6 +332,8 @@ class ScheduleBot:
             for l in items:
                 time_part = f' ({l.time_range})' if l.time_range else ''
                 lines.append(f'\n<b>#{l.lesson_number}{time_part} {escape(l.subject or "")}</b>')
+                if l.lesson_type:
+                    lines.append(f'  🏷 {escape(l.lesson_type)}')
                 if l.teacher:
                     lines.append(f'  👤 {escape(l.teacher)}')
                 if l.location:
