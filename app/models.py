@@ -78,6 +78,17 @@ def migrate():
     ensure_column('feedback', 'notified_at',
                   'ALTER TABLE feedback ADD COLUMN notified_at TIMESTAMP')
 
+    # Дедлайны: дата сдачи стала необязательной (NULL = «без срока»).
+    # ensure_column не подходит — колонка уже существует; проверяем флаг nullable.
+    # SQLite не умеет ALTER COLUMN: свежие SQLite-базы создадутся сразу
+    # с nullable=True из модели, старые dev-базы пересоздаются вручную.
+    if 'deadlines' in tables and engine.dialect.name == 'postgresql':
+        due_cols = [c for c in insp.get_columns('deadlines') if c['name'] == 'due_date']
+        if due_cols and not due_cols[0].get('nullable', True):
+            with engine.begin() as conn:
+                conn.execute(text(
+                    'ALTER TABLE deadlines ALTER COLUMN due_date DROP NOT NULL'))
+
 
 def ensure_admin():
     """Создать/обновить первого администратора. Идемпотентно и потокобезопасно.
@@ -299,12 +310,15 @@ class Exam(Base):
 
 
 class Deadline(Base):
-    """Дедлайн по предмету (контрольная, лабораторная и т.п.)."""
+    """Дедлайн по предмету (контрольная, лабораторная и т.п.).
+
+    due_date может быть NULL — «без срока».
+    """
     __tablename__ = 'deadlines'
     id = Column(Integer, primary_key=True)
     subject = Column(String(200), nullable=False)
     title = Column(String(255), nullable=False)
-    due_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=True)
     due_time = Column(Time, nullable=True)
     notes = Column(Text)
     is_done = Column(Boolean, default=False)

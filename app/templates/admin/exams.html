@@ -47,8 +47,8 @@
                 <button class="btn btn-success">+</button>
             </div>
             <div class="col-12">
-                <label class="form-label">Примечания</label>
-                <input type="text" name="notes" class="form-control" placeholder="необязательно">
+                <label class="form-label">Примечания <span class="text-muted">(Markdown)</span></label>
+                <input type="text" name="notes" class="form-control" placeholder="необязательно, поддерживается Markdown">
             </div>
         </form>
     </div>
@@ -96,8 +96,8 @@
                 <button class="btn btn-sm btn-primary">Сохранить</button>
             </div>
             <div class="col-12">
-                <label class="form-label small text-muted">Примечания</label>
-                <input type="text" name="notes" class="form-control form-control-sm" value="{{ exam.notes or '' }}">
+                <label class="form-label small text-muted">Примечания <span class="text-muted">(Markdown)</span></label>
+                <input type="text" name="notes" class="form-control form-control-sm" value="{{ exam.notes or '' }}" placeholder="необязательно, поддерживается Markdown">
             </div>
         </form>
         <div class="mt-2 d-flex justify-content-between align-items-center">

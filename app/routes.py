@@ -105,7 +105,10 @@ def session_page():
         upcoming_exams = [e for e in exams if e.date >= today]
         past_exams = [e for e in exams if e.date < today]
         deadlines = (session.query(Deadline)
-                     .order_by(Deadline.is_done, Deadline.due_date, Deadline.due_time)
+                     .order_by(Deadline.is_done,
+                               Deadline.due_date.is_(None),
+                               Deadline.due_date,
+                               Deadline.due_time)
                      .all())
         info = session.get(SessionInfo, 1)
         return render_template('session.html',

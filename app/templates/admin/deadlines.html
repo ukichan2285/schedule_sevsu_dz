@@ -20,8 +20,8 @@
                 <input type="text" name="title" class="form-control" required placeholder="например, Лабораторная работа №1">
             </div>
             <div class="col-md-2">
-                <label class="form-label">Дата сдачи *</label>
-                <input type="date" name="due_date" class="form-control" required>
+                <label class="form-label">Дата сдачи <span class="text-muted">(необяз.)</span></label>
+                <input type="date" name="due_date" class="form-control">
             </div>
             <div class="col-md-1">
                 <label class="form-label">Время</label>
@@ -37,8 +37,8 @@
                 <button class="btn btn-success">+</button>
             </div>
             <div class="col-12">
-                <label class="form-label">Примечания</label>
-                <input type="text" name="notes" class="form-control" placeholder="необязательно">
+                <label class="form-label">Примечания <span class="text-muted">(Markdown)</span></label>
+                <input type="text" name="notes" class="form-control" placeholder="необязательно, поддерживается Markdown">
             </div>
         </form>
     </div>
@@ -46,7 +46,7 @@
 
 {% if deadlines %}
 {% for d in deadlines %}
-<div class="card mb-2 {% if d.is_done %}opacity-75{% elif d.due_date < today %}border-danger{% endif %}">
+<div class="card mb-2 {% if d.is_done %}opacity-75{% elif d.due_date is not none and d.due_date < today %}border-danger{% endif %}">
     <div class="card-body">
         <form method="POST" action="/admin/deadlines/{{ d.id }}/edit" class="row g-2 align-items-end">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -59,8 +59,8 @@
                 <input type="text" name="title" class="form-control form-control-sm" value="{{ d.title }}" required>
             </div>
             <div class="col-md-2">
-                <label class="form-label small text-muted">Дата сдачи</label>
-                <input type="date" name="due_date" class="form-control form-control-sm" value="{{ d.due_date.strftime('%Y-%m-%d') }}" required>
+                <label class="form-label small text-muted">Дата сдачи <span class="text-muted">(необяз.)</span></label>
+                <input type="date" name="due_date" class="form-control form-control-sm" value="{{ d.due_date.strftime('%Y-%m-%d') if d.due_date else '' }}">
             </div>
             <div class="col-md-1">
                 <label class="form-label small text-muted">Время</label>
@@ -76,8 +76,8 @@
                 <button class="btn btn-sm btn-primary">Сохранить</button>
             </div>
             <div class="col-12">
-                <label class="form-label small text-muted">Примечания</label>
-                <input type="text" name="notes" class="form-control form-control-sm" value="{{ d.notes or '' }}">
+                <label class="form-label small text-muted">Примечания <span class="text-muted">(Markdown)</span></label>
+                <input type="text" name="notes" class="form-control form-control-sm" value="{{ d.notes or '' }}" placeholder="необязательно, поддерживается Markdown">
             </div>
         </form>
         <div class="mt-2 d-flex justify-content-between align-items-center">

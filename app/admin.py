@@ -45,6 +45,18 @@ def _parse_date(value, field_name):
         return None
 
 
+def _parse_date_optional(value, field_name):
+    """Парсит YYYY-MM-DD в date; пустое значение → None, ошибка → False."""
+    value = (value or '').strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        flash(f'Неверный формат даты для «{field_name}»', 'error')
+        return False
+
+
 def _parse_time(value):
     """Парсит HH:MM в time; пустое значение → None."""
     value = (value or '').strip()
@@ -535,7 +547,10 @@ def deadlines():
     s = Session()
     try:
         items = (s.query(Deadline)
-                 .order_by(Deadline.is_done, Deadline.due_date, Deadline.due_time)
+                 .order_by(Deadline.is_done,
+                           Deadline.due_date.is_(None),
+                           Deadline.due_date,
+                           Deadline.due_time)
                  .all())
     finally:
         s.close()
@@ -556,8 +571,8 @@ def deadlines_create():
         flash('Укажите предмет и название дедлайна', 'error')
         return redirect(url_for('admin.deadlines'))
 
-    due_date = _parse_date(request.form.get('due_date'), 'дату сдачи')
-    if due_date is None:
+    due_date = _parse_date_optional(request.form.get('due_date'), 'дату сдачи')
+    if due_date is False:
         return redirect(url_for('admin.deadlines'))
 
     s = Session()
@@ -596,8 +611,8 @@ def deadlines_edit(did):
             flash('Укажите предмет и название дедлайна', 'error')
             return redirect(url_for('admin.deadlines'))
 
-        due_date = _parse_date(request.form.get('due_date'), 'дату сдачи')
-        if due_date is None:
+        due_date = _parse_date_optional(request.form.get('due_date'), 'дату сдачи')
+        if due_date is False:
             return redirect(url_for('admin.deadlines'))
 
         d.subject = subject
