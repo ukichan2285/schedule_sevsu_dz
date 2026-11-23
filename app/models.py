@@ -1,4 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Text, DateTime, Date, ForeignKey, Boolean, LargeBinary, text, inspect
+from sqlalchemy import (create_engine, Column, Integer, BigInteger, String, Text,
+                        DateTime, Date, Time, ForeignKey, Boolean, LargeBinary,
+                        text, inspect)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, deferred
@@ -257,4 +259,63 @@ class Feedback(Base):
             'text': self.text,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'is_read': bool(self.is_read),
+        }
+
+
+class Exam(Base):
+    """Экзамен/зачёт/консультация в расписании сессии."""
+    __tablename__ = 'exams'
+    id = Column(Integer, primary_key=True)
+    subject = Column(String(200), nullable=False)
+    kind = Column(String(50), nullable=False, default='экзамен')
+    date = Column(Date, nullable=False)
+    time_start = Column(Time, nullable=True)
+    time_end = Column(Time, nullable=True)
+    location = Column(String(100))
+    teacher = Column(String(200))
+    notes = Column(Text)
+
+    @property
+    def time_range(self):
+        """'08:30–10:00' или время начала, или пустая строка."""
+        if self.time_start and self.time_end:
+            return f'{self.time_start.strftime("%H:%M")}–{self.time_end.strftime("%H:%M")}'
+        if self.time_start:
+            return self.time_start.strftime('%H:%M')
+        return ''
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'subject': self.subject,
+            'kind': self.kind,
+            'date': self.date.isoformat() if self.date else None,
+            'time_start': self.time_start.strftime('%H:%M') if self.time_start else None,
+            'time_end': self.time_end.strftime('%H:%M') if self.time_end else None,
+            'location': self.location,
+            'teacher': self.teacher,
+            'notes': self.notes,
+        }
+
+
+class Deadline(Base):
+    """Дедлайн по предмету (контрольная, лабораторная и т.п.)."""
+    __tablename__ = 'deadlines'
+    id = Column(Integer, primary_key=True)
+    subject = Column(String(200), nullable=False)
+    title = Column(String(255), nullable=False)
+    due_date = Column(Date, nullable=False)
+    due_time = Column(Time, nullable=True)
+    notes = Column(Text)
+    is_done = Column(Boolean, default=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'subject': self.subject,
+            'title': self.title,
+            'due_date': self.due_date.isoformat() if self.due_date else None,
+            'due_time': self.due_time.strftime('%H:%M') if self.due_time else None,
+            'notes': self.notes,
+            'is_done': bool(self.is_done),
         }

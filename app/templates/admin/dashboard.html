@@ -38,6 +38,22 @@
             </div>
         </div>
     </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100"><div class="card-body">
+            <div class="fs-2 fw-bold">{{ stats.exams }}</div>
+            <div class="text-muted">Мероприятия сессии</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100">
+            <div class="card-body">
+                <div class="fs-2 fw-bold">{{ stats.deadlines }}</div>
+                <div class="text-muted">Дедлайны
+                    {% if stats.deadlines_done %}<span class="badge bg-success">{{ stats.deadlines_done }}</span>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="list-group">
@@ -50,6 +66,12 @@
     <a href="/admin/feedback" class="list-group-item list-group-item-action">
         <i class="bi bi-chat-left-text"></i> Пожелания пользователей
         {% if stats.feedback_unread %}<span class="badge bg-warning text-dark">{{ stats.feedback_unread }} новых</span>{% endif %}
+    </a>
+    <a href="/admin/exams" class="list-group-item list-group-item-action">
+        <i class="bi bi-journal-check"></i> Расписание сессии — экзамены, зачёты, консультации
+    </a>
+    <a href="/admin/deadlines" class="list-group-item list-group-item-action">
+        <i class="bi bi-list-check"></i> Дедлайны по предметам
     </a>
     <a href="/admin/changes" class="list-group-item list-group-item-action">
         <i class="bi bi-clock-history"></i> Журнал изменений расписания

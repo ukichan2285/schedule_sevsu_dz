@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-list-check"></i> Дедлайны по предметам</h2>
+    <a href="/admin" class="btn btn-outline-secondary btn-sm">← В панель</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Добавить дедлайн</div>
+    <div class="card-body">
+        <form method="POST" action="/admin/deadlines/create" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="col-md-3">
+                <label class="form-label">Предмет *</label>
+                <input type="text" name="subject" class="form-control" required placeholder="например, Математика">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Название *</label>
+                <input type="text" name="title" class="form-control" required placeholder="например, Лабораторная работа №1">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Дата сдачи *</label>
+                <input type="date" name="due_date" class="form-control" required>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Время</label>
+                <input type="time" name="due_time" class="form-control">
+            </div>
+            <div class="col-md-1">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_done" id="is_done_new">
+                    <label class="form-check-label" for="is_done_new">готово</label>
+                </div>
+            </div>
+            <div class="col-md-1 d-grid">
+                <button class="btn btn-success">+</button>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Примечания</label>
+                <input type="text" name="notes" class="form-control" placeholder="необязательно">
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if deadlines %}
+{% for d in deadlines %}
+<div class="card mb-2 {% if d.is_done %}opacity-75{% elif d.due_date < today %}border-danger{% endif %}">
+    <div class="card-body">
+        <form method="POST" action="/admin/deadlines/{{ d.id }}/edit" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Предмет</label>
+                <input type="text" name="subject" class="form-control form-control-sm" value="{{ d.subject }}" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small text-muted">Название</label>
+                <input type="text" name="title" class="form-control form-control-sm" value="{{ d.title }}" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Дата сдачи</label>
+                <input type="date" name="due_date" class="form-control form-control-sm" value="{{ d.due_date.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small text-muted">Время</label>
+                <input type="time" name="due_time" class="form-control form-control-sm" value="{{ d.due_time.strftime('%H:%M') if d.due_time else '' }}">
+            </div>
+            <div class="col-md-1">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_done" id="is_done_{{ d.id }}" {% if d.is_done %}checked{% endif %}>
+                    <label class="form-check-label small" for="is_done_{{ d.id }}">готово</label>
+                </div>
+            </div>
+            <div class="col-md-1 d-grid">
+                <button class="btn btn-sm btn-primary">Сохранить</button>
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted">Примечания</label>
+                <input type="text" name="notes" class="form-control form-control-sm" value="{{ d.notes or '' }}">
+            </div>
+        </form>
+        <div class="mt-2 d-flex justify-content-between align-items-center">
+            <small class="text-muted">ID: {{ d.id }}</small>
+            <div class="d-flex gap-2">
+                <form method="POST" action="/admin/deadlines/{{ d.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-{{ 'success' if d.is_done else 'secondary' }}">
+                        {% if d.is_done %}<i class="bi bi-check-circle"></i> выполнено{% else %}<i class="bi bi-circle"></i> отметить готовым{% endif %}
+                    </button>
+                </form>
+                <form method="POST" action="/admin/deadlines/{{ d.id }}/delete"
+                      onsubmit="return confirm('Удалить дедлайн «{{ d.title }}»?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info text-center">Дедлайнов пока нет.</div>
+{% endif %}
+{% endblock %}

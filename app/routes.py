@@ -4,7 +4,7 @@ from io import BytesIO
 
 from sqlalchemy.orm import joinedload
 
-from app.models import Schedule, Homework, HomeworkFile, ScheduleChange, Session
+from app.models import Schedule, Homework, HomeworkFile, ScheduleChange, Exam, Deadline, Session
 from app.updater import run_update
 from app.ics_parser import DAY_NAMES, day_name_for, week_monday
 
@@ -88,6 +88,29 @@ def changes():
                  .order_by(ScheduleChange.detected_at.desc())
                  .limit(50).all())
         return render_template('changes.html', changes=items)
+    finally:
+        session.close()
+
+
+@main.route('/session')
+def session_page():
+    """Расписание сессии и дедлайны по предметам."""
+    session = Session()
+    try:
+        today = datetime.now().date()
+        exams = (session.query(Exam)
+                 .order_by(Exam.date, Exam.time_start)
+                 .all())
+        upcoming_exams = [e for e in exams if e.date >= today]
+        past_exams = [e for e in exams if e.date < today]
+        deadlines = (session.query(Deadline)
+                     .order_by(Deadline.is_done, Deadline.due_date, Deadline.due_time)
+                     .all())
+        return render_template('session.html',
+                               upcoming_exams=upcoming_exams,
+                               past_exams=past_exams,
+                               deadlines=deadlines,
+                               today=today)
     finally:
         session.close()
 

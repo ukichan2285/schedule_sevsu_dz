@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-journal-check"></i> Расписание сессии</h2>
+    <a href="/admin" class="btn btn-outline-secondary btn-sm">← В панель</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Добавить мероприятие</div>
+    <div class="card-body">
+        <form method="POST" action="/admin/exams/create" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="col-md-3">
+                <label class="form-label">Предмет *</label>
+                <input type="text" name="subject" class="form-control" required placeholder="например, Математика">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Вид *</label>
+                <select name="kind" class="form-select">
+                    {% for k in kinds %}
+                    <option value="{{ k }}">{{ k }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Дата *</label>
+                <input type="date" name="date" class="form-control" required>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Начало</label>
+                <input type="time" name="time_start" class="form-control">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Конец</label>
+                <input type="time" name="time_end" class="form-control">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Аудитория</label>
+                <input type="text" name="location" class="form-control" placeholder="—">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label">Преподаватель</label>
+                <input type="text" name="teacher" class="form-control" placeholder="—">
+            </div>
+            <div class="col-md-1 d-grid">
+                <button class="btn btn-success">+</button>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Примечания</label>
+                <input type="text" name="notes" class="form-control" placeholder="необязательно">
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if exams %}
+{% for exam in exams %}
+<div class="card mb-2">
+    <div class="card-body">
+        <form method="POST" action="/admin/exams/{{ exam.id }}/edit" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Предмет</label>
+                <input type="text" name="subject" class="form-control form-control-sm" value="{{ exam.subject }}" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Вид</label>
+                <select name="kind" class="form-select form-select-sm">
+                    {% for k in kinds %}
+                    <option value="{{ k }}" {% if exam.kind == k %}selected{% endif %}>{{ k }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">Дата</label>
+                <input type="date" name="date" class="form-control form-control-sm" value="{{ exam.date.strftime('%Y-%m-%d') }}" required>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small text-muted">Начало</label>
+                <input type="time" name="time_start" class="form-control form-control-sm" value="{{ exam.time_start.strftime('%H:%M') if exam.time_start else '' }}">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small text-muted">Конец</label>
+                <input type="time" name="time_end" class="form-control form-control-sm" value="{{ exam.time_end.strftime('%H:%M') if exam.time_end else '' }}">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small text-muted">Аудитория</label>
+                <input type="text" name="location" class="form-control form-control-sm" value="{{ exam.location or '' }}">
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small text-muted">Преподаватель</label>
+                <input type="text" name="teacher" class="form-control form-control-sm" value="{{ exam.teacher or '' }}">
+            </div>
+            <div class="col-md-1 d-grid">
+                <button class="btn btn-sm btn-primary">Сохранить</button>
+            </div>
+            <div class="col-12">
+                <label class="form-label small text-muted">Примечания</label>
+                <input type="text" name="notes" class="form-control form-control-sm" value="{{ exam.notes or '' }}">
+            </div>
+        </form>
+        <div class="mt-2 d-flex justify-content-between align-items-center">
+            <small class="text-muted">ID: {{ exam.id }}</small>
+            <form method="POST" action="/admin/exams/{{ exam.id }}/delete"
+                  onsubmit="return confirm('Удалить мероприятие «{{ exam.subject }}»?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-sm btn-outline-danger">Удалить</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info text-center">Мероприятий в расписании сессии пока нет.</div>
+{% endif %}
+{% endblock %}

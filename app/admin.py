@@ -1,13 +1,60 @@
-"""Админ-панель: авторизация, пользователи, домашние задания, журнал."""
+"""Админ-панель: авторизация, пользователи, домашние задания, журнал, сессия."""
 from functools import wraps
 from datetime import datetime, timedelta
+import secrets
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash, session)
 from sqlalchemy import func
 
-from app.models import Session, User, Schedule, Homework, ScheduleChange, Feedback
+from app.models import (Session, User, Schedule, Homework, ScheduleChange,
+                        Feedback, Exam, Deadline)
 from app.ics_parser import DAY_NAMES, week_monday
+
+
+# Виды мероприятий в сессии. Порядок важен для выпадающего списка.
+EXAM_KINDS = ('экзамен', 'зачёт', 'диф. зачёт', 'консультация')
+
+
+def _csrf_token():
+    """Простой CSRF-токен на основе сессии (без дополнительных зависимостей)."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_urlsafe(32)
+    return session['csrf_token']
+
+
+def _validate_csrf():
+    """Проверить CSRF-токен в POST-запросе."""
+    token = request.form.get('csrf_token')
+    if not token or token != session.get('csrf_token'):
+        flash('Ошибка безопасности: недействительный CSRF-токен', 'error')
+        return False
+    return True
+
+
+def _parse_date(value, field_name):
+    """Парсит YYYY-MM-DD в date; при ошибке возвращает None и показывает flash."""
+    value = (value or '').strip()
+    if not value:
+        flash(f'Укажите {field_name}', 'error')
+        return None
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        flash(f'Неверный формат даты для «{field_name}»', 'error')
+        return None
+
+
+def _parse_time(value):
+    """Парсит HH:MM в time; пустое значение → None."""
+    value = (value or '').strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, '%H:%M').time()
+    except ValueError:
+        return None
+
 
 admin = Blueprint('admin', __name__)
 
@@ -88,6 +135,9 @@ def dashboard():
             'changes': s.query(ScheduleChange).count(),
             'feedback': s.query(Feedback).count(),
             'feedback_unread': s.query(Feedback).filter(Feedback.is_read.is_(False)).count(),
+            'exams': s.query(Exam).count(),
+            'deadlines': s.query(Deadline).count(),
+            'deadlines_done': s.query(Deadline).filter(Deadline.is_done.is_(True)).count(),
         }
     finally:
         s.close()
@@ -367,3 +417,234 @@ def feedback_delete(fid):
     finally:
         s.close()
     return redirect(url_for('admin.feedback'))
+
+
+# ─────────── Расписание сессии ───────────
+
+@admin.route('/admin/exams')
+@admin_required
+def exams():
+    s = Session()
+    try:
+        items = s.query(Exam).order_by(Exam.date, Exam.time_start).all()
+    finally:
+        s.close()
+    return render_template('admin/exams.html', exams=items, kinds=EXAM_KINDS,
+                           csrf_token=_csrf_token())
+
+
+@admin.route('/admin/exams/create', methods=['POST'])
+@admin_required
+def exams_create():
+    if not _validate_csrf():
+        return redirect(url_for('admin.exams'))
+
+    subject = (request.form.get('subject') or '').strip()
+    kind = request.form.get('kind') or 'экзамен'
+    if kind not in EXAM_KINDS:
+        kind = 'экзамен'
+    if not subject:
+        flash('Укажите предмет', 'error')
+        return redirect(url_for('admin.exams'))
+    date = _parse_date(request.form.get('date'), 'дату')
+    if date is None:
+        return redirect(url_for('admin.exams'))
+
+    s = Session()
+    try:
+        s.add(Exam(
+            subject=subject,
+            kind=kind,
+            date=date,
+            time_start=_parse_time(request.form.get('time_start')),
+            time_end=_parse_time(request.form.get('time_end')),
+            location=(request.form.get('location') or '').strip() or None,
+            teacher=(request.form.get('teacher') or '').strip() or None,
+            notes=(request.form.get('notes') or '').strip() or None,
+        ))
+        s.commit()
+        flash('Мероприятие добавлено в расписание сессии', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.exams'))
+
+
+@admin.route('/admin/exams/<int:eid>/edit', methods=['POST'])
+@admin_required
+def exams_edit(eid):
+    if not _validate_csrf():
+        return redirect(url_for('admin.exams'))
+
+    s = Session()
+    try:
+        exam = s.get(Exam, eid)
+        if not exam:
+            flash('Мероприятие не найдено', 'error')
+            return redirect(url_for('admin.exams'))
+
+        subject = (request.form.get('subject') or '').strip()
+        if not subject:
+            flash('Укажите предмет', 'error')
+            return redirect(url_for('admin.exams'))
+
+        kind = request.form.get('kind') or 'экзамен'
+        if kind not in EXAM_KINDS:
+            kind = 'экзамен'
+        date = _parse_date(request.form.get('date'), 'дату')
+        if date is None:
+            return redirect(url_for('admin.exams'))
+
+        exam.subject = subject
+        exam.kind = kind
+        exam.date = date
+        exam.time_start = _parse_time(request.form.get('time_start'))
+        exam.time_end = _parse_time(request.form.get('time_end'))
+        exam.location = (request.form.get('location') or '').strip() or None
+        exam.teacher = (request.form.get('teacher') or '').strip() or None
+        exam.notes = (request.form.get('notes') or '').strip() or None
+        s.commit()
+        flash('Мероприятие обновлено', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.exams'))
+
+
+@admin.route('/admin/exams/<int:eid>/delete', methods=['POST'])
+@admin_required
+def exams_delete(eid):
+    if not _validate_csrf():
+        return redirect(url_for('admin.exams'))
+
+    s = Session()
+    try:
+        exam = s.get(Exam, eid)
+        if exam:
+            s.delete(exam)
+            s.commit()
+            flash('Мероприятие удалено', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.exams'))
+
+
+# ─────────── Дедлайны ───────────
+
+@admin.route('/admin/deadlines')
+@admin_required
+def deadlines():
+    s = Session()
+    try:
+        items = (s.query(Deadline)
+                 .order_by(Deadline.is_done, Deadline.due_date, Deadline.due_time)
+                 .all())
+    finally:
+        s.close()
+    return render_template('admin/deadlines.html', deadlines=items,
+                           today=datetime.now().date(),
+                           csrf_token=_csrf_token())
+
+
+@admin.route('/admin/deadlines/create', methods=['POST'])
+@admin_required
+def deadlines_create():
+    if not _validate_csrf():
+        return redirect(url_for('admin.deadlines'))
+
+    subject = (request.form.get('subject') or '').strip()
+    title = (request.form.get('title') or '').strip()
+    if not subject or not title:
+        flash('Укажите предмет и название дедлайна', 'error')
+        return redirect(url_for('admin.deadlines'))
+
+    due_date = _parse_date(request.form.get('due_date'), 'дату сдачи')
+    if due_date is None:
+        return redirect(url_for('admin.deadlines'))
+
+    s = Session()
+    try:
+        s.add(Deadline(
+            subject=subject,
+            title=title,
+            due_date=due_date,
+            due_time=_parse_time(request.form.get('due_time')),
+            notes=(request.form.get('notes') or '').strip() or None,
+            is_done=request.form.get('is_done') == 'on',
+        ))
+        s.commit()
+        flash('Дедлайн добавлен', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.deadlines'))
+
+
+@admin.route('/admin/deadlines/<int:did>/edit', methods=['POST'])
+@admin_required
+def deadlines_edit(did):
+    if not _validate_csrf():
+        return redirect(url_for('admin.deadlines'))
+
+    s = Session()
+    try:
+        d = s.get(Deadline, did)
+        if not d:
+            flash('Дедлайн не найден', 'error')
+            return redirect(url_for('admin.deadlines'))
+
+        subject = (request.form.get('subject') or '').strip()
+        title = (request.form.get('title') or '').strip()
+        if not subject or not title:
+            flash('Укажите предмет и название дедлайна', 'error')
+            return redirect(url_for('admin.deadlines'))
+
+        due_date = _parse_date(request.form.get('due_date'), 'дату сдачи')
+        if due_date is None:
+            return redirect(url_for('admin.deadlines'))
+
+        d.subject = subject
+        d.title = title
+        d.due_date = due_date
+        d.due_time = _parse_time(request.form.get('due_time'))
+        d.notes = (request.form.get('notes') or '').strip() or None
+        d.is_done = request.form.get('is_done') == 'on'
+        s.commit()
+        flash('Дедлайн обновлён', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.deadlines'))
+
+
+@admin.route('/admin/deadlines/<int:did>/toggle', methods=['POST'])
+@admin_required
+def deadlines_toggle(did):
+    """Быстрое переключение статуса дедлайна без открытия формы."""
+    if not _validate_csrf():
+        return redirect(url_for('admin.deadlines'))
+
+    s = Session()
+    try:
+        d = s.get(Deadline, did)
+        if d:
+            d.is_done = not d.is_done
+            s.commit()
+            flash('Статус дедлайна изменён', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.deadlines'))
+
+
+@admin.route('/admin/deadlines/<int:did>/delete', methods=['POST'])
+@admin_required
+def deadlines_delete(did):
+    if not _validate_csrf():
+        return redirect(url_for('admin.deadlines'))
+
+    s = Session()
+    try:
+        d = s.get(Deadline, did)
+        if d:
+            s.delete(d)
+            s.commit()
+            flash('Дедлайн удалён', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.deadlines'))

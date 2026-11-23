@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="text-center mb-4">Сессия</h2>
+
+        <h3 class="mb-3"><i class="bi bi-journal-check"></i> Расписание сессии</h3>
+        {% if upcoming_exams or past_exams %}
+            {% if upcoming_exams %}
+            <div class="row">
+                {% for exam in upcoming_exams %}
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <span class="badge bg-{% if exam.kind == 'экзамен' %}danger{% elif exam.kind in ('зачёт', 'диф. зачёт') %}primary{% else %}secondary{% endif %}">
+                                    {{ exam.kind }}
+                                </span>
+                                <small class="text-muted">{{ exam.date.strftime('%d.%m.%Y') }}</small>
+                            </div>
+                            <h5 class="card-title fw-bold mb-2">{{ exam.subject }}</h5>
+                            <div class="small">
+                                {% if exam.time_range %}
+                                <div><i class="bi bi-clock"></i> {{ exam.time_range }}</div>
+                                {% endif %}
+                                {% if exam.location %}
+                                <div class="location"><i class="bi bi-geo-alt"></i> {{ exam.location }}</div>
+                                {% endif %}
+                                {% if exam.teacher %}
+                                <div class="teacher"><i class="bi bi-person"></i> {{ exam.teacher }}</div>
+                                {% endif %}
+                            </div>
+                            {% if exam.notes %}
+                            <div class="small text-muted mt-2" style="white-space: pre-wrap;">{{ exam.notes }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if past_exams %}
+            <div class="mt-4">
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#pastExams">
+                    <i class="bi bi-clock-history"></i> Прошедшие мероприятия ({{ past_exams|length }})
+                </button>
+                <div class="collapse mt-3" id="pastExams">
+                    <div class="row">
+                        {% for exam in past_exams %}
+                        <div class="col-md-6 col-lg-4 mb-3">
+                            <div class="card h-100 opacity-50">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <span class="badge bg-{% if exam.kind == 'экзамен' %}danger{% elif exam.kind in ('зачёт', 'диф. зачёт') %}primary{% else %}secondary{% endif %}">
+                                            {{ exam.kind }}
+                                        </span>
+                                        <small class="text-muted">{{ exam.date.strftime('%d.%m.%Y') }}</small>
+                                    </div>
+                                    <h5 class="card-title fw-bold mb-2">{{ exam.subject }}</h5>
+                                    <div class="small">
+                                        {% if exam.time_range %}
+                                        <div><i class="bi bi-clock"></i> {{ exam.time_range }}</div>
+                                        {% endif %}
+                                        {% if exam.location %}
+                                        <div class="location"><i class="bi bi-geo-alt"></i> {{ exam.location }}</div>
+                                        {% endif %}
+                                        {% if exam.teacher %}
+                                        <div class="teacher"><i class="bi bi-person"></i> {{ exam.teacher }}</div>
+                                        {% endif %}
+                                    </div>
+                                    {% if exam.notes %}
+                                    <div class="small text-muted mt-2" style="white-space: pre-wrap;">{{ exam.notes }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        {% else %}
+        <div class="alert alert-info text-center">
+            <i class="bi bi-info-circle"></i> Расписание сессии пока не заполнено
+        </div>
+        {% endif %}
+
+        <h3 class="mb-3 mt-5"><i class="bi bi-list-check"></i> Дедлайны по предметам</h3>
+        {% if deadlines %}
+        <div class="list-group">
+            {% for d in deadlines %}
+            <div class="list-group-item d-flex justify-content-between align-items-start {% if d.is_done %}text-muted{% elif d.due_date < today %}list-group-item-danger{% endif %}">
+                <div>
+                    {% if d.is_done %}
+                    <i class="bi bi-check-circle-fill text-success"></i>
+                    {% elif d.due_date < today %}
+                    <i class="bi bi-exclamation-circle-fill text-danger"></i>
+                    {% else %}
+                    <i class="bi bi-circle"></i>
+                    {% endif %}
+                    <span{% if d.is_done %} style="text-decoration: line-through;"{% endif %}>
+                        <strong>{{ d.title }}</strong>
+                    </span>
+                    <div class="small">{{ d.subject }}</div>
+                    {% if d.notes %}
+                    <div class="small text-muted">{{ d.notes }}</div>
+                    {% endif %}
+                </div>
+                <div class="text-end small ms-3">
+                    <div{% if not d.is_done and d.due_date < today %} class="fw-bold"{% endif %}>
+                        {{ d.due_date.strftime('%d.%m.%Y') }}{% if d.due_time %} {{ d.due_time.strftime('%H:%M') }}{% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info text-center">
+            <i class="bi bi-info-circle"></i> Дедлайнов нет
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
