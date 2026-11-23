@@ -113,7 +113,12 @@
   до `api.telegram.org` (`curl -4` — timeout, `curl -6` — 302). Keepalive-крон
   поднял бота сам на третьей попытке.
 - Замечание: `PTBUserWarning` про `create_task(_resend_loop)` — старый код,
-  не критично.
+  не критично (теперь то же предупреждение про `_weekly_loop`).
+- **Деплой новой фичи (вечер 23.11):** `app/bot.py` + `app/models.py`
+  (бэкап: `~/schedule_app/.backup/2026-11-23-1818/`), перезапуск через
+  `bot_keepalive.sh`; в логе — «Еженедельная отправка расписания запущена»,
+  `Application started`; таблица `chat_settings` создана (`has_table=True`).
+  Коммит: `2cb3085`.
 
 ### Коммиты
 - `6337353` — бот: `/raspisanie`, работа в группах, привязка режимов к чату.
