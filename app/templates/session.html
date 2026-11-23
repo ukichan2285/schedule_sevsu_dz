@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+.md-info { overflow-x: auto; }
+.md-info table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; background-color: #fff; border: 1px solid #dee2e6; }
+.md-info table th, .md-info table td { padding: 0.5rem; border: 1px solid #dee2e6; vertical-align: top; }
+.md-info table thead th { background-color: #f8f9fa; font-weight: 600; border-bottom: 2px solid #dee2e6; }
+.md-info table tbody tr:nth-child(odd) { background-color: #f8f9fa; }
+.md-info p:last-child { margin-bottom: 0; }
+</style>
+
 <div class="row">
     <div class="col-12">
         <h2 class="text-center mb-4">Сессия</h2>
@@ -84,6 +93,22 @@
         {% else %}
         <div class="alert alert-info text-center">
             <i class="bi bi-info-circle"></i> Расписание сессии пока не заполнено
+        </div>
+        {% endif %}
+
+        {% if info and info.text %}
+        <div class="card mt-4 mb-4">
+            <div class="card-header">
+                <i class="bi bi-info-square"></i> Общая информация
+            </div>
+            <div class="card-body md-info">
+                {{ info.text | md }}
+            </div>
+            {% if info.updated_at %}
+            <div class="card-footer text-muted small">
+                обновлено {{ info.updated_at.strftime('%d.%m.%Y') }}
+            </div>
+            {% endif %}
         </div>
         {% endif %}
 

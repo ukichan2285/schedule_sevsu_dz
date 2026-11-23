@@ -23,7 +23,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 
 from app.ics_parser import DAY_NAMES, DAY_SHORT, day_name_for, week_monday
-from app.models import Schedule, Homework, HomeworkFile, Feedback, ScheduleChange, Session, User
+from app.models import Schedule, Homework, HomeworkFile, Feedback, ScheduleChange, Session, SessionInfo, User
 
 
 # Кнопки постоянного меню (появляются под полем ввода).
@@ -193,6 +193,19 @@ class ScheduleBot:
     def _clear_feedback_state(context):
         context.user_data.pop('feedback_mode', None)
 
+    @staticmethod
+    def _set_session_info_state(context, chat_id):
+        context.user_data['session_info_mode'] = {'chat_id': chat_id, 'enabled': True}
+
+    @staticmethod
+    def _is_session_info_state(context, chat_id):
+        state = context.user_data.get('session_info_mode')
+        return isinstance(state, dict) and state.get('chat_id') == chat_id and state.get('enabled')
+
+    @staticmethod
+    def _clear_session_info_state(context):
+        context.user_data.pop('session_info_mode', None)
+
     # ────────── Приложение ──────────
     def create_application(self):
         from app import config
@@ -211,6 +224,7 @@ class ScheduleBot:
         application.add_handler(CommandHandler(['get_changes', 'changes'], self.get_changes))
         application.add_handler(CommandHandler(['homework', 'set_homework', 'dz'], self.homework))
         application.add_handler(CommandHandler(['feedback', 'suggest', 'idea'], self.feedback))
+        application.add_handler(CommandHandler(['session_info', 'sessioninfo'], self.session_info))
         application.add_handler(CommandHandler('done', self.done))
         application.add_handler(CommandHandler('cancel', self.cancel))
 
@@ -239,6 +253,7 @@ class ScheduleBot:
             BotCommand('done', 'Готово'),
             BotCommand('cancel', 'Отмена'),
             BotCommand('feedback', 'Пожелание админу'),
+            BotCommand('session_info', 'Инфо о сессии (заполняющим ДЗ)'),
         ]
         try:
             await application.bot.set_my_commands(commands)
@@ -312,7 +327,8 @@ class ScheduleBot:
             '/get_schedule — расписание на сегодня\n'
             '/get_changes — последние изменения расписания\n'
             '/homework — задать ДЗ к паре (текст Markdown + фото)\n'
-            '/feedback — отправить пожелание/идею администратору\n\n'
+            '/feedback — отправить пожелание/идею администратору\n'
+            '/session_info — редактировать «Общую информацию о сессии» (админам и заполняющим ДЗ)\n\n'
             'ДЗ заполняется кнопками: предмет → пара. '
             'Потом пришли текст и/или фото и нажми «✅ Готово».',
             parse_mode=ParseMode.HTML)
@@ -395,9 +411,46 @@ class ScheduleBot:
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
         had_feedback = self._is_feedback_state(context, chat_id)
+        had_session_info = self._is_session_info_state(context, chat_id)
         self._clear_feedback_state(context)
+        self._clear_session_info_state(context)
         self._clear_hw_state(context)
-        await update.message.reply_text('Отменено.' if not had_feedback else 'Отменено. Пожелание не отправлено.')
+        if had_feedback:
+            await update.message.reply_text('Отменено. Пожелание не отправлено.')
+        elif had_session_info:
+            await update.message.reply_text('Отменено. Информация о сессии не изменена.')
+        else:
+            await update.message.reply_text('Отменено.')
+
+    async def session_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Редактировать блок «Общая информация о сессии»."""
+        u = update.effective_user
+        session = self._session()
+        try:
+            if not self._can_homework(session, u.id):
+                await update.message.reply_text('❌ Эта команда доступна только администраторам и заполняющим ДЗ.')
+                return
+            existing = session.query(SessionInfo).filter(SessionInfo.id == 1).first()
+        finally:
+            session.close()
+
+        self._clear_hw_state(context)
+        self._clear_feedback_state(context)
+        self._set_session_info_state(context, update.effective_chat.id)
+
+        preview = ''
+        if existing and existing.text:
+            snippet = escape(existing.text[:300])
+            if len(existing.text) > 300:
+                snippet += '…'
+            preview = f'Текущий текст (первые 300 символов):\n<pre>{snippet}</pre>\n\n'
+
+        await update.message.reply_text(
+            f'{preview}📝 Пришлите текст одним сообщением — он появится на сайте на вкладке «Сессия» '
+            'в блоке «Общая информация».\n\n'
+            'Поддерживается Markdown: заголовки, списки, <b>жирный</b> и таблицы.\n'
+            'Отмена — /cancel.',
+            parse_mode=ParseMode.HTML)
 
     # ────────── Обратная связь (пожелания админу) ──────────
     async def feedback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -477,6 +530,26 @@ class ScheduleBot:
             context.application.create_task(self._deliver_feedback(context.bot, fb_id))
         except Exception as exc:  # noqa: BLE001
             logger.warning('Не удалось запустить доставку пожелания %s: %s', fb_id, exc)
+
+    async def _handle_session_info(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Сохранить текст блока «Общая информация о сессии»."""
+        u = update.effective_user
+        text = update.message.text or ''
+        session = self._session()
+        try:
+            info = session.query(SessionInfo).filter(SessionInfo.id == 1).first()
+            if info is None:
+                info = SessionInfo(id=1, text=text, updated_by=u.id)
+                session.add(info)
+            else:
+                info.text = text
+                info.updated_by = u.id
+            session.commit()
+        finally:
+            session.close()
+        await update.message.reply_text(
+            '✅ Информация о сессии обновлена — уже на сайте schedule-sevsu.ru/session.',
+            parse_mode=ParseMode.HTML)
 
     # ────────── Доставка пожеланий админу (с повторами) ──────────
     def _admin_ids(self):
@@ -739,6 +812,10 @@ class ScheduleBot:
         if self._is_feedback_state(context, chat_id):
             self._clear_feedback_state(context)
             await self._handle_feedback(update, context)
+            return
+        if self._is_session_info_state(context, chat_id):
+            self._clear_session_info_state(context)
+            await self._handle_session_info(update, context)
             return
         schedule_id = self._get_hw_state(context, chat_id)
         if not schedule_id:

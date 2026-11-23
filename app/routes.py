@@ -4,7 +4,8 @@ from io import BytesIO
 
 from sqlalchemy.orm import joinedload
 
-from app.models import Schedule, Homework, HomeworkFile, ScheduleChange, Exam, Deadline, Session
+from app.models import (Schedule, Homework, HomeworkFile, ScheduleChange,
+                        Exam, Deadline, SessionInfo, Session)
 from app.updater import run_update
 from app.ics_parser import DAY_NAMES, day_name_for, week_monday
 
@@ -106,11 +107,13 @@ def session_page():
         deadlines = (session.query(Deadline)
                      .order_by(Deadline.is_done, Deadline.due_date, Deadline.due_time)
                      .all())
+        info = session.get(SessionInfo, 1)
         return render_template('session.html',
                                upcoming_exams=upcoming_exams,
                                past_exams=past_exams,
                                deadlines=deadlines,
-                               today=today)
+                               today=today,
+                               info=info)
     finally:
         session.close()
 

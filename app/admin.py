@@ -8,7 +8,7 @@ from flask import (Blueprint, render_template, request, redirect, url_for,
 from sqlalchemy import func
 
 from app.models import (Session, User, Schedule, Homework, ScheduleChange,
-                        Feedback, Exam, Deadline)
+                        Feedback, Exam, Deadline, SessionInfo)
 from app.ics_parser import DAY_NAMES, week_monday
 
 
@@ -648,3 +648,50 @@ def deadlines_delete(did):
     finally:
         s.close()
     return redirect(url_for('admin.deadlines'))
+
+
+# ─────────── Общая информация о сессии ───────────
+
+def _get_session_info(s):
+    """Вернуть единственную запись SessionInfo; создать пустую при отсутствии."""
+    info = s.get(SessionInfo, 1)
+    if info is None:
+        info = SessionInfo(id=1, text='', updated_at=datetime.now())
+        s.add(info)
+        s.commit()
+        # после commit атрибуты экспирятся; refresh перезагружает их, чтобы
+        # объект оставался читаемым после закрытия сессии (шаблон читает info.text)
+        s.refresh(info)
+    return info
+
+
+@admin.route('/admin/session_info')
+@admin_required
+def session_info():
+    s = Session()
+    try:
+        info = _get_session_info(s)
+    finally:
+        s.close()
+    return render_template('admin/session_info.html', info=info,
+                           csrf_token=_csrf_token())
+
+
+@admin.route('/admin/session_info/save', methods=['POST'])
+@admin_required
+def session_info_save():
+    if not _validate_csrf():
+        return redirect(url_for('admin.session_info'))
+
+    text = request.form.get('text') or ''
+    s = Session()
+    try:
+        info = _get_session_info(s)
+        info.text = text
+        info.updated_at = datetime.now()
+        info.updated_by = None
+        s.commit()
+        flash('Информация о сессии сохранена', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.session_info'))

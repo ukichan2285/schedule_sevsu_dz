@@ -319,3 +319,24 @@ class Deadline(Base):
             'notes': self.notes,
             'is_done': bool(self.is_done),
         }
+
+
+class SessionInfo(Base):
+    """Markdown-блок «Общая информация о сессии» на вкладке «Сессия».
+
+    Одна запись (id=1). Текст редактируется из бота (заполняющие ДЗ,
+    команда /session_info) и из админки на сайте.
+    """
+    __tablename__ = 'session_info'
+    id = Column(Integer, primary_key=True)
+    text = Column(Text, nullable=False, default='')
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_by = Column(BigInteger)  # telegram id автора правки
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'text': self.text,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'updated_by': self.updated_by,
+        }

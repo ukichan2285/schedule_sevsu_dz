@@ -17,10 +17,13 @@ except ImportError:  # pragma: no cover
     _bleach = None
 
 
+# Теги разрешены для Markdown: базовая разметка + таблицы (используются
+# в блоке «Общая информация о сессии» и могут использоваться в ДЗ).
 ALLOWED_TAGS = [
     'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre', 'a',
     'ul', 'ol', 'li', 'blockquote', 'hr',
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
 ]
 ALLOWED_ATTRS = {'a': ['href', 'title'], 'span': ['class']}
 
@@ -34,7 +37,7 @@ def render(text):
         if _bleach is not None:
             return Markup(_bleach.clean(text, tags=[], strip=True))
         return Markup(str(text).replace('&', '&amp;').replace('<', '&lt;'))
-    html = _markdown.markdown(text, extensions=['nl2br', 'sane_lists'])
+    html = _markdown.markdown(text, extensions=['nl2br', 'sane_lists', 'tables'])
     if _bleach is not None:
         html = _bleach.clean(
             html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS,
