@@ -286,6 +286,9 @@ class Exam(Base):
     teacher = Column(String(200))
     notes = Column(Text)
 
+    files = relationship('SessionFile', back_populates='exam',
+                         cascade='all, delete-orphan', order_by='SessionFile.id')
+
     @property
     def time_range(self):
         """'08:30–10:00' или время начала, или пустая строка."""
@@ -323,6 +326,9 @@ class Deadline(Base):
     notes = Column(Text)
     is_done = Column(Boolean, default=False)
 
+    files = relationship('SessionFile', back_populates='deadline',
+                         cascade='all, delete-orphan', order_by='SessionFile.id')
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -353,4 +359,34 @@ class SessionInfo(Base):
             'text': self.text,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'updated_by': self.updated_by,
+        }
+
+
+class SessionFile(Base):
+    """Вложение к экзамену или дедлайну (фото, PDF). Данные в БД (bytea),
+    как у HomeworkFile — диск хостинга эфемерный. Ровно один из
+    exam_id / deadline_id заполнен.
+    """
+    __tablename__ = 'session_files'
+    id = Column(Integer, primary_key=True)
+    exam_id = Column(Integer, ForeignKey('exams.id', ondelete='CASCADE'))
+    deadline_id = Column(Integer, ForeignKey('deadlines.id', ondelete='CASCADE'))
+    file_name = Column(String(255))
+    mime_type = Column(String(100))
+    size = Column(Integer)
+    # data отложенная: списки не тянут байты
+    data = deferred(Column(LargeBinary))
+    created_at = Column(DateTime)
+
+    exam = relationship('Exam', back_populates='files')
+    deadline = relationship('Deadline', back_populates='files')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'exam_id': self.exam_id,
+            'deadline_id': self.deadline_id,
+            'file_name': self.file_name,
+            'mime_type': self.mime_type,
+            'size': self.size or 0,
         }

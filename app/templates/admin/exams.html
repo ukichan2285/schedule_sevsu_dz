@@ -9,7 +9,7 @@
 <div class="card mb-4">
     <div class="card-header">Добавить мероприятие</div>
     <div class="card-body">
-        <form method="POST" action="/admin/exams/create" class="row g-2 align-items-end">
+        <form method="POST" action="/admin/exams/create" class="row g-2 align-items-end" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="col-md-3">
                 <label class="form-label">Предмет *</label>
@@ -50,6 +50,10 @@
                 <label class="form-label">Примечания <span class="text-muted">(Markdown)</span></label>
                 <input type="text" name="notes" class="form-control" placeholder="необязательно, поддерживается Markdown">
             </div>
+            <div class="col-md-6">
+                <label class="form-label">Файлы <span class="text-muted">(фото или PDF, до 10 МБ)</span></label>
+                <input type="file" name="files" class="form-control" multiple accept="image/jpeg,image/png,image/gif,image/webp,application/pdf">
+            </div>
         </form>
     </div>
 </div>
@@ -58,7 +62,7 @@
 {% for exam in exams %}
 <div class="card mb-2">
     <div class="card-body">
-        <form method="POST" action="/admin/exams/{{ exam.id }}/edit" class="row g-2 align-items-end">
+        <form method="POST" action="/admin/exams/{{ exam.id }}/edit" class="row g-2 align-items-end" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="col-md-3">
                 <label class="form-label small text-muted">Предмет</label>
@@ -99,7 +103,28 @@
                 <label class="form-label small text-muted">Примечания <span class="text-muted">(Markdown)</span></label>
                 <input type="text" name="notes" class="form-control form-control-sm" value="{{ exam.notes or '' }}" placeholder="необязательно, поддерживается Markdown">
             </div>
+            <div class="col-md-6">
+                <label class="form-label small text-muted">Файлы <span class="text-muted">(фото или PDF, до 10 МБ)</span></label>
+                <input type="file" name="files" class="form-control form-control-sm" multiple accept="image/jpeg,image/png,image/gif,image/webp,application/pdf">
+            </div>
         </form>
+        {% if exam.files %}
+        <div class="mt-2 small">
+            {% for f in exam.files %}
+            <div class="d-flex justify-content-between align-items-center border-bottom py-1">
+                <span class="text-muted">
+                    <i class="bi bi-{% if f.mime_type and f.mime_type.startswith('image/') %}image{% elif f.mime_type == 'application/pdf' %}file-earmark-pdf{% else %}file-earmark{% endif %}"></i>
+                    {{ f.file_name }} ({{ f.size | human_size }})
+                </span>
+                <form method="POST" action="/admin/exams/{{ exam.id }}/files/{{ f.id }}/delete"
+                      onsubmit="return confirm('Удалить файл «{{ f.file_name }}»?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-danger">Удалить</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         <div class="mt-2 d-flex justify-content-between align-items-center">
             <small class="text-muted">ID: {{ exam.id }}</small>
             <form method="POST" action="/admin/exams/{{ exam.id }}/delete"

@@ -43,6 +43,18 @@
                             {% if exam.notes %}
                             <div class="small text-muted mt-2">{{ exam.notes | md }}</div>
                             {% endif %}
+                            {% if exam.files %}
+                            <div class="small mt-2">
+                                {% for f in exam.files %}
+                                <div>
+                                    <a href="/session/file/{{ f.id }}" target="_blank" class="text-muted text-decoration-none">
+                                        <i class="bi bi-{% if f.mime_type and f.mime_type.startswith('image/') %}image{% elif f.mime_type == 'application/pdf' %}file-earmark-pdf{% else %}file-earmark{% endif %}"></i>
+                                        {{ f.file_name }} <span class="text-muted">({{ f.size | human_size }})</span>
+                                    </a>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -81,6 +93,18 @@
                                     </div>
                                     {% if exam.notes %}
                                     <div class="small text-muted mt-2">{{ exam.notes | md }}</div>
+                                    {% endif %}
+                                    {% if exam.files %}
+                                    <div class="small mt-2">
+                                        {% for f in exam.files %}
+                                        <div>
+                                            <a href="/session/file/{{ f.id }}" target="_blank" class="text-muted text-decoration-none">
+                                                <i class="bi bi-{% if f.mime_type and f.mime_type.startswith('image/') %}image{% elif f.mime_type == 'application/pdf' %}file-earmark-pdf{% else %}file-earmark{% endif %}"></i>
+                                                {{ f.file_name }} <span class="text-muted">({{ f.size | human_size }})</span>
+                                            </a>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
                                     {% endif %}
                                 </div>
                             </div>
@@ -131,6 +155,18 @@
                     <div class="small">{{ d.subject }}</div>
                     {% if d.notes %}
                     <div class="small text-muted mt-1">{{ d.notes | md }}</div>
+                    {% endif %}
+                    {% if d.files %}
+                    <div class="small mt-2">
+                        {% for f in d.files %}
+                        <div>
+                            <a href="/session/file/{{ f.id }}" target="_blank" class="text-muted text-decoration-none">
+                                <i class="bi bi-{% if f.mime_type and f.mime_type.startswith('image/') %}image{% elif f.mime_type == 'application/pdf' %}file-earmark-pdf{% else %}file-earmark{% endif %}"></i>
+                                {{ f.file_name }} <span class="text-muted">({{ f.size | human_size }})</span>
+                            </a>
+                        </div>
+                        {% endfor %}
+                    </div>
                     {% endif %}
                 </div>
                 <div class="text-end small ms-3">

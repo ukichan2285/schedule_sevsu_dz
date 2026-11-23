@@ -2,18 +2,26 @@
 from functools import wraps
 from datetime import datetime, timedelta
 import secrets
+import os
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
                    flash, session)
 from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 
 from app.models import (Session, User, Schedule, Homework, ScheduleChange,
-                        Feedback, Exam, Deadline, SessionInfo)
+                        Feedback, Exam, Deadline, SessionInfo, SessionFile)
 from app.ics_parser import DAY_NAMES, week_monday
 
 
 # Виды мероприятий в сессии. Порядок важен для выпадающего списка.
 EXAM_KINDS = ('экзамен', 'зачёт', 'диф. зачёт', 'консультация')
+
+# Вложения к экзаменам/дедлайнам
+ALLOWED_SESSION_MIMES = {
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf',
+}
+MAX_SESSION_FILE_SIZE = 10 * 1024 * 1024  # 10 МБ
 
 
 def _csrf_token():
@@ -66,6 +74,49 @@ def _parse_time(value):
         return datetime.strptime(value, '%H:%M').time()
     except ValueError:
         return None
+
+
+def _sanitize_filename(name):
+    """Оставить только имя файла, без пути."""
+    if not name:
+        return 'file'
+    # werkzeug уже декодирует filename, но оставляем защиту от ../
+    return os.path.basename(name).strip() or 'file'
+
+
+def _save_session_files(s, files, exam_id=None, deadline_id=None):
+    """Сохранить загруженные файлы для экзамена или дедлайна.
+
+    Пропускает пустые поля, неподдерживаемые типы и файлы больше 10 МБ.
+    Возвращает количество сохранённых файлов.
+    """
+    saved = 0
+    for f in files:
+        if not f or not f.filename:
+            continue
+        data = f.read()
+        size = len(data)
+        mime = (f.mimetype or 'application/octet-stream').strip()
+        file_name = _sanitize_filename(f.filename)
+
+        if mime not in ALLOWED_SESSION_MIMES:
+            flash(f'Файл «{file_name}»: разрешены только фото и PDF', 'error')
+            continue
+        if size > MAX_SESSION_FILE_SIZE:
+            flash(f'Файл «{file_name}»: больше 10 МБ', 'error')
+            continue
+
+        s.add(SessionFile(
+            exam_id=exam_id,
+            deadline_id=deadline_id,
+            file_name=file_name,
+            mime_type=mime,
+            size=size,
+            data=data,
+            created_at=datetime.now(),
+        ))
+        saved += 1
+    return saved
 
 
 admin = Blueprint('admin', __name__)
@@ -438,7 +489,11 @@ def feedback_delete(fid):
 def exams():
     s = Session()
     try:
-        items = s.query(Exam).order_by(Exam.date, Exam.time_start).all()
+        # joinedload: файлы нужны шаблону после закрытия сессии,
+        # ленивая загрузка на detached-объекте кидает DetachedInstanceError
+        items = (s.query(Exam)
+                 .options(joinedload(Exam.files))
+                 .order_by(Exam.date, Exam.time_start).all())
     finally:
         s.close()
     return render_template('admin/exams.html', exams=items, kinds=EXAM_KINDS,
@@ -464,7 +519,7 @@ def exams_create():
 
     s = Session()
     try:
-        s.add(Exam(
+        exam = Exam(
             subject=subject,
             kind=kind,
             date=date,
@@ -473,9 +528,16 @@ def exams_create():
             location=(request.form.get('location') or '').strip() or None,
             teacher=(request.form.get('teacher') or '').strip() or None,
             notes=(request.form.get('notes') or '').strip() or None,
-        ))
+        )
+        s.add(exam)
         s.commit()
-        flash('Мероприятие добавлено в расписание сессии', 'success')
+        saved = _save_session_files(s, request.files.getlist('files'),
+                                    exam_id=exam.id)
+        if saved:
+            s.commit()
+            flash(f'Мероприятие добавлено. Файлов: {saved}', 'success')
+        else:
+            flash('Мероприятие добавлено в расписание сессии', 'success')
     finally:
         s.close()
     return redirect(url_for('admin.exams'))
@@ -515,7 +577,13 @@ def exams_edit(eid):
         exam.teacher = (request.form.get('teacher') or '').strip() or None
         exam.notes = (request.form.get('notes') or '').strip() or None
         s.commit()
-        flash('Мероприятие обновлено', 'success')
+        saved = _save_session_files(s, request.files.getlist('files'),
+                                    exam_id=exam.id)
+        if saved:
+            s.commit()
+            flash(f'Мероприятие обновлено. Файлов добавлено: {saved}', 'success')
+        else:
+            flash('Мероприятие обновлено', 'success')
     finally:
         s.close()
     return redirect(url_for('admin.exams'))
@@ -539,6 +607,24 @@ def exams_delete(eid):
     return redirect(url_for('admin.exams'))
 
 
+@admin.route('/admin/exams/<int:eid>/files/<int:fid>/delete', methods=['POST'])
+@admin_required
+def exam_file_delete(eid, fid):
+    if not _validate_csrf():
+        return redirect(url_for('admin.exams'))
+
+    s = Session()
+    try:
+        f = s.get(SessionFile, fid)
+        if f and f.exam_id == eid:
+            s.delete(f)
+            s.commit()
+            flash('Файл удалён', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.exams'))
+
+
 # ─────────── Дедлайны ───────────
 
 @admin.route('/admin/deadlines')
@@ -546,7 +632,9 @@ def exams_delete(eid):
 def deadlines():
     s = Session()
     try:
+        # joinedload — как в exams(): шаблон читает files после close()
         items = (s.query(Deadline)
+                 .options(joinedload(Deadline.files))
                  .order_by(Deadline.is_done,
                            Deadline.due_date.is_(None),
                            Deadline.due_date,
@@ -577,16 +665,23 @@ def deadlines_create():
 
     s = Session()
     try:
-        s.add(Deadline(
+        deadline = Deadline(
             subject=subject,
             title=title,
             due_date=due_date,
             due_time=_parse_time(request.form.get('due_time')),
             notes=(request.form.get('notes') or '').strip() or None,
             is_done=request.form.get('is_done') == 'on',
-        ))
+        )
+        s.add(deadline)
         s.commit()
-        flash('Дедлайн добавлен', 'success')
+        saved = _save_session_files(s, request.files.getlist('files'),
+                                    deadline_id=deadline.id)
+        if saved:
+            s.commit()
+            flash(f'Дедлайн добавлен. Файлов: {saved}', 'success')
+        else:
+            flash('Дедлайн добавлен', 'success')
     finally:
         s.close()
     return redirect(url_for('admin.deadlines'))
@@ -622,7 +717,13 @@ def deadlines_edit(did):
         d.notes = (request.form.get('notes') or '').strip() or None
         d.is_done = request.form.get('is_done') == 'on'
         s.commit()
-        flash('Дедлайн обновлён', 'success')
+        saved = _save_session_files(s, request.files.getlist('files'),
+                                    deadline_id=d.id)
+        if saved:
+            s.commit()
+            flash(f'Дедлайн обновлён. Файлов добавлено: {saved}', 'success')
+        else:
+            flash('Дедлайн обновлён', 'success')
     finally:
         s.close()
     return redirect(url_for('admin.deadlines'))
@@ -660,6 +761,24 @@ def deadlines_delete(did):
             s.delete(d)
             s.commit()
             flash('Дедлайн удалён', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.deadlines'))
+
+
+@admin.route('/admin/deadlines/<int:did>/files/<int:fid>/delete', methods=['POST'])
+@admin_required
+def deadline_file_delete(did, fid):
+    if not _validate_csrf():
+        return redirect(url_for('admin.deadlines'))
+
+    s = Session()
+    try:
+        f = s.get(SessionFile, fid)
+        if f and f.deadline_id == did:
+            s.delete(f)
+            s.commit()
+            flash('Файл удалён', 'success')
     finally:
         s.close()
     return redirect(url_for('admin.deadlines'))

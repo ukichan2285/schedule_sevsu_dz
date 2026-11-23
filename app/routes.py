@@ -5,11 +5,24 @@ from io import BytesIO
 from sqlalchemy.orm import joinedload
 
 from app.models import (Schedule, Homework, HomeworkFile, ScheduleChange,
-                        Exam, Deadline, SessionInfo, Session)
+                        Exam, Deadline, SessionInfo, SessionFile, Session)
 from app.updater import run_update
 from app.ics_parser import DAY_NAMES, day_name_for, week_monday
 
 main = Blueprint('main', __name__)
+
+
+@main.app_template_filter('human_size')
+def _human_size(size):
+    """Читаемый размер файла: 1.5 МБ, 230 КБ, 0 Б."""
+    if size is None:
+        return '0 Б'
+    size = int(size)
+    if size >= 1024 * 1024:
+        return f'{size / (1024 * 1024):.1f} МБ'
+    if size >= 1024:
+        return f'{size / 1024:.0f} КБ'
+    return f'{size} Б'
 
 
 def current_monday():
@@ -117,6 +130,25 @@ def session_page():
                                deadlines=deadlines,
                                today=today,
                                info=info)
+    finally:
+        session.close()
+
+
+@main.route('/session/file/<int:file_id>')
+def session_file(file_id):
+    """Отдать вложение к экзамену/дедлайну (фото/PDF) из БД."""
+    session = Session()
+    try:
+        f = session.get(SessionFile, file_id)
+        if not f or not f.data:
+            abort(404)
+        return send_file(
+            BytesIO(f.data),
+            mimetype=f.mime_type or 'application/octet-stream',
+            download_name=f.file_name or f'file_{f.id}',
+            as_attachment=False,
+            max_age=3600,
+        )
     finally:
         session.close()
 
