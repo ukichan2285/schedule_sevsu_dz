@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="mb-0"><i class="bi bi-megaphone"></i> Объявления на сайте</h2>
+    <a href="/admin" class="btn btn-outline-secondary btn-sm">← В панель</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Добавить объявление</div>
+    <div class="card-body">
+        <form method="POST" action="/admin/announcements/create">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="mb-3">
+                <label class="form-label">Заголовок <span class="text-muted">(необяз.)</span></label>
+                <input type="text" name="title" class="form-control" placeholder="например, Важно">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Текст * <span class="text-muted">(поддерживается Markdown)</span></label>
+                <textarea name="text" class="form-control" rows="4" required placeholder="Текст объявления"></textarea>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="is_active" id="is_active_new" checked>
+                <label class="form-check-label" for="is_active_new">активно (показывать на сайте)</label>
+            </div>
+            <button class="btn btn-success">+ Добавить</button>
+        </form>
+    </div>
+</div>
+
+{% if announcements %}
+{% for a in announcements %}
+<div class="card mb-2 {% if not a.is_active %}opacity-75{% endif %}">
+    <div class="card-body">
+        <div class="small text-muted mb-2">{{ a.text[:80] }}{% if a.text|length > 80 %}…{% endif %}</div>
+        <form method="POST" action="/admin/announcements/{{ a.id }}/edit" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">Заголовок</label>
+                <input type="text" name="title" class="form-control form-control-sm" value="{{ a.title or '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small text-muted">Текст <span class="text-muted">(Markdown)</span></label>
+                <input type="text" name="text" class="form-control form-control-sm" value="{{ a.text }}" required>
+            </div>
+            <div class="col-md-1">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="is_active_{{ a.id }}" {% if a.is_active %}checked{% endif %}>
+                    <label class="form-check-label small" for="is_active_{{ a.id }}">активно</label>
+                </div>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-sm btn-primary">Сохранить</button>
+            </div>
+        </form>
+        <div class="mt-2 d-flex justify-content-between align-items-center">
+            <small class="text-muted">
+                ID: {{ a.id }} ·
+                {% if a.is_active %}<span class="badge bg-success">активно</span>{% else %}<span class="badge bg-secondary">неактивно</span>{% endif %} ·
+                {{ a.created_at.strftime('%d.%m.%Y') }}
+            </small>
+            <div class="d-flex gap-2">
+                <form method="POST" action="/admin/announcements/{{ a.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-{{ 'secondary' if a.is_active else 'success' }}">
+                        {% if a.is_active %}<i class="bi bi-eye-slash"></i> скрыть{% else %}<i class="bi bi-eye"></i> показать{% endif %}
+                    </button>
+                </form>
+                <form method="POST" action="/admin/announcements/{{ a.id }}/delete"
+                      onsubmit="return confirm('Удалить объявление?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="btn btn-sm btn-outline-danger">Удалить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info text-center">Объявлений пока нет.</div>
+{% endif %}
+{% endblock %}

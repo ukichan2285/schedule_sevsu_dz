@@ -390,3 +390,26 @@ class SessionFile(Base):
             'mime_type': self.mime_type,
             'size': self.size or 0,
         }
+
+
+class Announcement(Base):
+    """Объявление на сайте (баннер поверх всех страниц).
+
+    Активные показываются всем; скрытие баннера запоминается в браузере
+    пользователя (localStorage по id объявления). Деактивация убирает для всех.
+    """
+    __tablename__ = 'announcements'
+    id = Column(Integer, primary_key=True)
+    title = Column(String(200))
+    text = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'title': self.title,
+            'text': self.text,
+            'is_active': bool(self.is_active),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }

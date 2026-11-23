@@ -47,6 +47,53 @@
     </style>
 </head>
 <body data-now="{{ server_now }}">
+
+    {% if announcements %}
+    <div class="site-announcements">
+        {% for a in announcements %}
+        <div class="alert alert-warning alert-dismissible fade show rounded-0 mb-0" role="alert" data-announcement-id="{{ a.id }}">
+            <div class="container">
+                {% if a.title %}<div><strong>{{ a.title }}</strong></div>{% endif %}
+                <div>{{ a.text | md }}</div>
+                <small class="text-muted d-block">{{ a.created_at.strftime('%d.%m.%Y') }}</small>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" data-announcement-dismiss aria-label="Закрыть"></button>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+    (function () {
+        'use strict';
+        var key = 'seenAnnouncements';
+        var seen = [];
+        try {
+            var raw = localStorage.getItem(key);
+            if (raw) seen = JSON.parse(raw) || [];
+        } catch (e) { seen = []; }
+        if (!Array.isArray(seen)) seen = [];
+
+        var banners = document.querySelectorAll('[data-announcement-id]');
+        for (var i = 0; i < banners.length; i++) {
+            var id = parseInt(banners[i].getAttribute('data-announcement-id'), 10);
+            if (seen.indexOf(id) !== -1) banners[i].style.display = 'none';
+        }
+
+        document.body.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-announcement-dismiss]');
+            if (!btn) return;
+            var el = btn.closest('[data-announcement-id]');
+            if (!el) return;
+            var id = parseInt(el.getAttribute('data-announcement-id'), 10);
+            if (seen.indexOf(id) === -1) {
+                seen.push(id);
+                try { localStorage.setItem(key, JSON.stringify(seen)); } catch (e) {}
+            }
+        });
+    })();
+    </script>
+    {% endif %}
+
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="/"><i class="bi bi-book"></i> SEVSU Расписание</a>

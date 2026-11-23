@@ -54,6 +54,16 @@
             </div>
         </div>
     </div>
+    <div class="col-6 col-md-3">
+        <div class="card text-center h-100 {% if stats.announcements_active %}border-warning{% endif %}">
+            <div class="card-body">
+                <div class="fs-2 fw-bold">{{ stats.announcements }}</div>
+                <div class="text-muted">Объявления
+                    {% if stats.announcements_active %}<span class="badge bg-warning text-dark">{{ stats.announcements_active }}</span>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="list-group">
@@ -75,6 +85,10 @@
     </a>
     <a href="/admin/session_info" class="list-group-item list-group-item-action">
         <i class="bi bi-info-square"></i> Общая информация о сессии
+    </a>
+    <a href="/admin/announcements" class="list-group-item list-group-item-action">
+        <i class="bi bi-megaphone"></i> Объявления на сайте
+        {% if stats.announcements_active %}<span class="badge bg-warning text-dark">{{ stats.announcements_active }} активных</span>{% endif %}
     </a>
     <a href="/admin/changes" class="list-group-item list-group-item-action">
         <i class="bi bi-clock-history"></i> Журнал изменений расписания

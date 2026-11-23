@@ -10,7 +10,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from app.models import (Session, User, Schedule, Homework, ScheduleChange,
-                        Feedback, Exam, Deadline, SessionInfo, SessionFile)
+                        Feedback, Exam, Deadline, SessionInfo, SessionFile,
+                        Announcement)
 from app.ics_parser import DAY_NAMES, week_monday
 
 
@@ -201,6 +202,8 @@ def dashboard():
             'exams': s.query(Exam).count(),
             'deadlines': s.query(Deadline).count(),
             'deadlines_done': s.query(Deadline).filter(Deadline.is_done.is_(True)).count(),
+            'announcements': s.query(Announcement).count(),
+            'announcements_active': s.query(Announcement).filter(Announcement.is_active.is_(True)).count(),
         }
     finally:
         s.close()
@@ -829,3 +832,112 @@ def session_info_save():
     finally:
         s.close()
     return redirect(url_for('admin.session_info'))
+
+
+# ─────────── Объявления на сайте ───────────
+
+@admin.route('/admin/announcements')
+@admin_required
+def announcements():
+    s = Session()
+    try:
+        items = (s.query(Announcement)
+                 .order_by(Announcement.is_active.desc(),
+                           Announcement.created_at.desc())
+                 .all())
+    finally:
+        s.close()
+    return render_template('admin/announcements.html', announcements=items,
+                           csrf_token=_csrf_token())
+
+
+@admin.route('/admin/announcements/create', methods=['POST'])
+@admin_required
+def announcements_create():
+    if not _validate_csrf():
+        return redirect(url_for('admin.announcements'))
+
+    title = (request.form.get('title') or '').strip() or None
+    text = request.form.get('text') or ''
+    if not text.strip():
+        flash('Укажите текст объявления', 'error')
+        return redirect(url_for('admin.announcements'))
+
+    s = Session()
+    try:
+        s.add(Announcement(
+            title=title,
+            text=text,
+            is_active=request.form.get('is_active') == 'on',
+            created_at=datetime.now(),
+        ))
+        s.commit()
+        flash('Объявление добавлено', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.announcements'))
+
+
+@admin.route('/admin/announcements/<int:aid>/edit', methods=['POST'])
+@admin_required
+def announcements_edit(aid):
+    if not _validate_csrf():
+        return redirect(url_for('admin.announcements'))
+
+    s = Session()
+    try:
+        a = s.get(Announcement, aid)
+        if not a:
+            flash('Объявление не найдено', 'error')
+            return redirect(url_for('admin.announcements'))
+
+        text = request.form.get('text') or ''
+        if not text.strip():
+            flash('Укажите текст объявления', 'error')
+            return redirect(url_for('admin.announcements'))
+
+        a.title = (request.form.get('title') or '').strip() or None
+        a.text = text
+        a.is_active = request.form.get('is_active') == 'on'
+        s.commit()
+        flash('Объявление обновлено', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.announcements'))
+
+
+@admin.route('/admin/announcements/<int:aid>/toggle', methods=['POST'])
+@admin_required
+def announcements_toggle(aid):
+    """Быстрое включение/выключение объявления."""
+    if not _validate_csrf():
+        return redirect(url_for('admin.announcements'))
+
+    s = Session()
+    try:
+        a = s.get(Announcement, aid)
+        if a:
+            a.is_active = not a.is_active
+            s.commit()
+            flash('Статус объявления изменён', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.announcements'))
+
+
+@admin.route('/admin/announcements/<int:aid>/delete', methods=['POST'])
+@admin_required
+def announcements_delete(aid):
+    if not _validate_csrf():
+        return redirect(url_for('admin.announcements'))
+
+    s = Session()
+    try:
+        a = s.get(Announcement, aid)
+        if a:
+            s.delete(a)
+            s.commit()
+            flash('Объявление удалено', 'success')
+    finally:
+        s.close()
+    return redirect(url_for('admin.announcements'))

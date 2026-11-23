@@ -1,5 +1,5 @@
 from flask import Flask
-from app.models import init_db, ensure_admin
+from app.models import init_db, ensure_admin, Announcement, Session
 from app import config
 
 
@@ -40,5 +40,22 @@ def create_app():
     @app.context_processor
     def _inject_server_now():
         return {'server_now': _datetime.now().isoformat(timespec='seconds')}
+
+    # Активные объявления для баннера на всех страницах
+    @app.context_processor
+    def _inject_announcements():
+        try:
+            s = Session()
+            try:
+                items = (s.query(Announcement)
+                         .filter(Announcement.is_active.is_(True))
+                         .order_by(Announcement.created_at.desc())
+                         .all())
+                return {'announcements': items}
+            finally:
+                s.close()
+        except Exception:  # noqa: BLE001
+            # при сбое БД не ломаем все страницы
+            return {'announcements': []}
 
     return app
