@@ -21,13 +21,17 @@ from telegram.ext import (
     MessageHandler, filters,
 )
 from telegram.request import HTTPXRequest
+from telegram.error import BadRequest
 
-from app.ics_parser import DAY_NAMES, DAY_SHORT, day_name_for, week_monday
-from app.models import Schedule, Homework, HomeworkFile, Feedback, ScheduleChange, Session, SessionInfo, User
+from app.ics_parser import DAY_NAMES, DAY_SHORT, day_name_for, week_monday, fmt_week
+from app.models import Schedule, Homework, HomeworkFile, Feedback, ScheduleChange, Session, SessionInfo, User, ChatSettings
 
 
 # Кнопки постоянного меню (появляются под полем ввода).
 BTN_SCHEDULE = '📅 Расписание на сегодня'
+BTN_SCHEDULE_TOMORROW = '📅 Расписание на завтра'
+BTN_SCHEDULE_WEEK = '🗓 Расписание на неделю'
+BTN_SETTINGS = '⚙️ Настройки'
 BTN_HOMEWORK = '📝 Задать ДЗ'
 BTN_FEEDBACK = '✍️ Пожелание админу'
 BTN_HELP = '❓ Помощь'
@@ -43,6 +47,12 @@ def main_menu(can_hw):
     rows = [[BTN_SCHEDULE], [BTN_FEEDBACK, BTN_HELP]]
     if can_hw:
         rows.insert(1, [BTN_HOMEWORK])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True)
+
+
+def group_menu():
+    """Постоянная клавиатура для групповых чатов."""
+    rows = [[BTN_SCHEDULE], [BTN_SCHEDULE_TOMORROW, BTN_SCHEDULE_WEEK], [BTN_SETTINGS]]
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -88,6 +98,16 @@ class ScheduleBot:
             session.add(hw)
             session.flush()
         return hw
+
+    @staticmethod
+    def _chat_settings(session, chat_id):
+        """Получить или создать настройки группового чата."""
+        cs = session.query(ChatSettings).filter(ChatSettings.chat_id == chat_id).first()
+        if cs is None:
+            cs = ChatSettings(chat_id=chat_id)
+            session.add(cs)
+            session.commit()
+        return cs
 
     # ────────── Новый флоу ДЗ: предмет → дата ──────────
     @staticmethod
@@ -225,11 +245,15 @@ class ScheduleBot:
         application.add_handler(CommandHandler(['homework', 'set_homework', 'dz'], self.homework))
         application.add_handler(CommandHandler(['feedback', 'suggest', 'idea'], self.feedback))
         application.add_handler(CommandHandler(['session_info', 'sessioninfo'], self.session_info))
+        application.add_handler(CommandHandler(['tomorrow', 'zavtra'], self.get_schedule_tomorrow))
+        application.add_handler(CommandHandler(['week', 'nedelya'], self.get_schedule_week))
+        application.add_handler(CommandHandler('settings', self.group_settings))
         application.add_handler(CommandHandler('done', self.done))
         application.add_handler(CommandHandler('cancel', self.cancel))
 
         application.add_handler(CallbackQueryHandler(self.on_callback, pattern=r'^hw:'))
         application.add_handler(CallbackQueryHandler(self.on_feedback_callback, pattern=r'^fb:'))
+        application.add_handler(CallbackQueryHandler(self.on_group_callback, pattern=r'^grp:'))
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, self.on_new_chat_members))
         application.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
         application.add_handler(MessageHandler(filters.Document.IMAGE, self.on_document))
@@ -248,6 +272,9 @@ class ScheduleBot:
             BotCommand('help', 'Помощь'),
             BotCommand('get_schedule', 'Расписание на сегодня'),
             BotCommand('raspisanie', 'Расписание на сегодня'),
+            BotCommand('tomorrow', 'Расписание на завтра'),
+            BotCommand('week', 'Расписание на неделю'),
+            BotCommand('settings', 'Настройки группы'),
             BotCommand('get_changes', 'Изменения в расписании'),
             BotCommand('homework', 'Задать ДЗ'),
             BotCommand('done', 'Готово'),
@@ -268,6 +295,12 @@ class ScheduleBot:
         except Exception as exc:  # noqa: BLE001
             logger.warning('Не удалось запустить досылку пожеланий: %s', exc)
 
+        try:
+            application.create_task(self._weekly_loop(application))
+            logger.info('Еженедельная отправка расписания запущена')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('Не удалось запустить еженедельную отправку расписания: %s', exc)
+
     async def on_error(self, update, context):
         logger.warning('Ошибка обработки запроса: %s', context.error)
 
@@ -285,6 +318,12 @@ class ScheduleBot:
 
     # ────────── Команды ──────────
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.effective_chat.type in ('group', 'supergroup'):
+            await update.message.reply_text(
+                'Привет! Я бот с расписанием. Кнопки: сегодня / завтра / неделя. '
+                '⚙️ Настройки — еженедельная отправка.',
+                reply_markup=group_menu())
+            return
         u = update.effective_user
         logger.info('start: telegram_id=%s username=%s', u.id, u.username)
         session = self._session()
@@ -306,11 +345,98 @@ class ScheduleBot:
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu(can_hw))
 
+    async def group_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Настройки группового чата (еженедельная отправка расписания)."""
+        if update.effective_chat.type == 'private':
+            await update.message.reply_text(
+                '⚙️ Настройки еженедельной отправки доступны в групповом чате. '
+                'Добавь меня в группу и напиши /settings там.')
+            return
+        chat_id = update.effective_chat.id
+        tg_id = update.effective_user.id
+        session = self._session()
+        try:
+            allowed = self._is_admin(session, tg_id)
+            if not allowed:
+                try:
+                    member = await context.bot.get_chat_administrator(chat_id, tg_id)
+                    allowed = member.status in ('administrator', 'creator')
+                except BadRequest:
+                    allowed = False
+            if not allowed:
+                await update.message.reply_text(
+                    'Настройки могут менять только администраторы группы.')
+                return
+            cs = self._chat_settings(session, chat_id)
+            state_label = ('✅ Еженедельная отправка: вкл' if cs.weekly_schedule
+                           else '❌ Еженедельная отправка: выкл')
+            keyboard = [[InlineKeyboardButton(state_label, callback_data='grp:weekly')]]
+            await update.message.reply_text(
+                '⚙️ Настройки группы\n\n'
+                'Каждый понедельник в 00:00 бот отправляет расписание на неделю и закрепляет его. '
+                'Для закрепления бот должен быть администратором группы.',
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode=ParseMode.HTML)
+        finally:
+            session.close()
+
+    async def on_group_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка инлайн-кнопок настроек группы."""
+        query = update.callback_query
+        parts = query.data.split(':')
+        kind = parts[1] if len(parts) > 1 else ''
+        if kind != 'weekly':
+            await query.answer()
+            return
+        chat_id = update.effective_chat.id
+        tg_id = update.effective_user.id
+        session = self._session()
+        try:
+            allowed = self._is_admin(session, tg_id)
+            if not allowed:
+                try:
+                    member = await context.bot.get_chat_administrator(chat_id, tg_id)
+                    allowed = member.status in ('administrator', 'creator')
+                except BadRequest:
+                    allowed = False
+            if not allowed:
+                await query.answer('Настройки могут менять только администраторы группы.')
+                return
+            cs = self._chat_settings(session, chat_id)
+            cs.weekly_schedule = not cs.weekly_schedule
+            session.commit()
+            state_label = ('✅ Еженедельная отправка: вкл' if cs.weekly_schedule
+                           else '❌ Еженедельная отправка: выкл')
+            keyboard = [[InlineKeyboardButton(state_label, callback_data='grp:weekly')]]
+            new_text = (
+                '⚙️ Настройки группы\n\n'
+                'Каждый понедельник в 00:00 бот отправляет расписание на неделю и закрепляет его. '
+                'Для закрепления бот должен быть администратором группы.')
+            try:
+                await query.edit_message_text(
+                    new_text,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode=ParseMode.HTML)
+            except BadRequest as exc:
+                if 'message is not modified' in str(exc).lower():
+                    pass
+                else:
+                    raise
+            await query.answer('Включено' if cs.weekly_schedule else 'Выключено')
+        finally:
+            session.close()
+
     # ────────── Кнопки меню → существующие действия ──────────
     async def _menu_action(self, update, context, text):
         """Выполнить действие по нажатой кнопке. True, если текст был кнопкой."""
         if text == BTN_SCHEDULE:
             await self.get_schedule(update, context)
+        elif text == BTN_SCHEDULE_TOMORROW:
+            await self.get_schedule_tomorrow(update, context)
+        elif text == BTN_SCHEDULE_WEEK:
+            await self.get_schedule_week(update, context)
+        elif text == BTN_SETTINGS:
+            await self.group_settings(update, context)
         elif text == BTN_HOMEWORK:
             await self.homework(update, context)
         elif text == BTN_FEEDBACK:
@@ -333,16 +459,58 @@ class ScheduleBot:
             'Потом пришли текст и/или фото и нажми «✅ Готово».',
             parse_mode=ParseMode.HTML)
 
-    async def get_schedule(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        session = self._session()
-        try:
-            today = datetime.now().date()
-            monday = week_monday(today)
-            day = day_name_for(today) or 'Воскресенье'
+    @staticmethod
+    def _split_html_chunks(lines, max_len=3500):
+        """Разбить список строк на части, не разрывая строки (и теги)."""
+        chunks = []
+        current = []
+        for line in lines:
+            if not current:
+                current.append(line)
+            elif len('\n'.join(current)) + 1 + len(line) <= max_len:
+                current.append(line)
+            else:
+                chunks.append('\n'.join(current))
+                current = [line]
+        if current:
+            chunks.append('\n'.join(current))
+        return chunks or ['']
+
+    @staticmethod
+    def _day_schedule_lines(session, d):
+        """HTML-строки расписания на конкретную дату."""
+        day = day_name_for(d)
+        if day is None:
+            return ['<b>Воскресенье</b> — занятий нет.']
+        monday = week_monday(d)
+        items = (session.query(Schedule)
+                 .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
+                 .order_by(Schedule.lesson_number).all())
+        lines = [f'<b>{escape(day)}</b>, {d.strftime("%d.%m.%Y")}']
+        if not items:
+            lines.append('Занятий нет.')
+        for l in items:
+            time_part = f' ({l.time_range})' if l.time_range else ''
+            lines.append(f'\n<b>#{l.lesson_number}{time_part} {escape(l.subject or "")}</b>')
+            if l.lesson_type:
+                lines.append(f'  🏷 {escape(l.lesson_type)}')
+            if l.teacher:
+                lines.append(f'  👤 {escape(l.teacher)}')
+            if l.location:
+                lines.append(f'  📍 {escape(l.location)}')
+            if l.homework and l.homework.text:
+                lines.append(f'  📝 ДЗ: {escape(l.homework.text)}')
+        return lines
+
+    @staticmethod
+    def _week_schedule_chunks(session, monday):
+        """Части HTML-текста расписания на неделю (понедельник=monday)."""
+        lines = [f'🗓 Расписание на неделю {fmt_week(monday)}']
+        for day in DAY_NAMES:
+            lines.append(f'<b>{day}</b>')
             items = (session.query(Schedule)
                      .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
                      .order_by(Schedule.lesson_number).all())
-            lines = [f'<b>{escape(day)}</b>, {today.strftime("%d.%m.%Y")}']
             if not items:
                 lines.append('Занятий нет.')
             for l in items:
@@ -356,9 +524,33 @@ class ScheduleBot:
                     lines.append(f'  📍 {escape(l.location)}')
                 if l.homework and l.homework.text:
                     lines.append(f'  📝 ДЗ: {escape(l.homework.text)}')
+        return ScheduleBot._split_html_chunks(lines)
+
+    async def get_schedule(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        session = self._session()
+        try:
+            lines = self._day_schedule_lines(session, date.today())
         finally:
             session.close()
         await update.message.reply_text('\n'.join(lines), parse_mode=ParseMode.HTML)
+
+    async def get_schedule_tomorrow(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        session = self._session()
+        try:
+            lines = self._day_schedule_lines(session, date.today() + timedelta(days=1))
+        finally:
+            session.close()
+        await update.message.reply_text('\n'.join(lines), parse_mode=ParseMode.HTML)
+
+    async def get_schedule_week(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        session = self._session()
+        try:
+            monday = week_monday(date.today())
+            chunks = self._week_schedule_chunks(session, monday)
+        finally:
+            session.close()
+        for chunk in chunks:
+            await update.message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
     async def get_changes(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         session = self._session()
@@ -583,13 +775,12 @@ class ScheduleBot:
         )
 
     async def _send_telegram(self, bot, chat_id, text, attempts=4):
-        """send_message с повторами при сетевых сбоях. True, если доставлено."""
+        """send_message с повторами при сетевых сбоях. Возвращает Message или None."""
         from telegram.error import RetryAfter, TimedOut, NetworkError
         for n in range(attempts):
             try:
-                await bot.send_message(chat_id=chat_id, text=text,
-                                       parse_mode=ParseMode.HTML)
-                return True
+                return await bot.send_message(chat_id=chat_id, text=text,
+                                              parse_mode=ParseMode.HTML)
             except RetryAfter as exc:
                 delay = float(getattr(exc, 'retry_after', 3) or 3) + 1
                 logger.warning('Telegram лимит для %s, пауза %.0fс', chat_id, delay)
@@ -598,12 +789,12 @@ class ScheduleBot:
                 if n >= attempts - 1:
                     logger.warning('Не удалось отправить в чат %s после %d попыток: %s',
                                    chat_id, attempts, exc)
-                    return False
+                    return None
                 await asyncio.sleep(1.5 * (2 ** n))
             except Exception as exc:  # noqa: BLE001
                 logger.warning('Ошибка отправки в чат %s: %s', chat_id, exc)
-                return False
-        return False
+                return None
+        return None
 
     async def _deliver_feedback(self, bot, fb_id):
         """Отправить одно пожелание админам; при успехе пометить notified."""
@@ -662,6 +853,59 @@ class ScheduleBot:
             logger.info('Досылка пожеланий: %s', ids)
         for fid in ids:
             await self._deliver_feedback(bot, fid)
+
+    async def _weekly_loop(self, application):
+        """Фоновая еженедельная отправка расписания в группы."""
+        await asyncio.sleep(30)
+        while True:
+            try:
+                await self._weekly_send(application.bot)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                logger.warning('Ошибка еженедельной отправки расписания: %s', exc)
+            await asyncio.sleep(300)
+
+    async def _weekly_send(self, bot):
+        """Отправить расписание на неделю в группы с включённой настройкой."""
+        from sqlalchemy import or_
+        today = date.today()
+        monday = week_monday(today)
+        session = self._session()
+        try:
+            chats = (session.query(ChatSettings)
+                     .filter(ChatSettings.weekly_schedule.is_(True))
+                     .filter(or_(ChatSettings.last_weekly_monday.is_(None),
+                                 ChatSettings.last_weekly_monday < monday))
+                     .all())
+            for cs in chats:
+                chat_id = cs.chat_id
+                chunks = self._week_schedule_chunks(session, monday)
+                if not chunks:
+                    continue
+                first_msg = await self._send_telegram(bot, chat_id, chunks[0])
+                if not first_msg:
+                    continue
+                for chunk in chunks[1:]:
+                    await self._send_telegram(bot, chat_id, chunk)
+                if cs.pinned_message_id:
+                    try:
+                        await bot.unpin_chat_message(chat_id, message_id=cs.pinned_message_id)
+                    except BadRequest:
+                        pass
+                try:
+                    await bot.pin_chat_message(
+                        chat_id, message_id=first_msg.message_id, disable_notification=True)
+                    cs.pinned_message_id = first_msg.message_id
+                except BadRequest as exc:
+                    logger.warning('Не удалось закрепить расписание в чате %s: %s', chat_id, exc)
+                    await self._send_telegram(
+                        bot, chat_id,
+                        '⚠️ Не удалось закрепить расписание — сделайте бота администратором группы.')
+                cs.last_weekly_monday = monday
+                session.commit()
+        finally:
+            session.close()
 
     # ────────── Инлайн-кнопки ──────────
     async def on_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -804,7 +1048,8 @@ class ScheduleBot:
         text = (update.message.text or '').strip()
         # Нажатие кнопки меню важнее любого режима: сбрасываем ввод и выполняем действие.
         chat_id = update.effective_chat.id
-        if text in (BTN_SCHEDULE, BTN_HOMEWORK, BTN_FEEDBACK, BTN_HELP):
+        if text in (BTN_SCHEDULE, BTN_SCHEDULE_TOMORROW, BTN_SCHEDULE_WEEK, BTN_SETTINGS,
+                    BTN_HOMEWORK, BTN_FEEDBACK, BTN_HELP):
             self._clear_hw_state(context)
             self._clear_feedback_state(context)
             await self._menu_action(update, context, text)

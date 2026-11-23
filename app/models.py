@@ -161,6 +161,15 @@ class User(Base):
     def to_dict(self):
         return {'id': self.id, 'telegram_id': self.telegram_id, 'username': self.username, 'role': self.role, 'is_active': self.is_active}
 
+
+class ChatSettings(Base):
+    __tablename__ = 'chat_settings'
+    chat_id = Column(BigInteger, primary_key=True, autoincrement=False)
+    weekly_schedule = Column(Boolean, nullable=False, default=False, server_default=text('false'))
+    pinned_message_id = Column(Integer, nullable=True)
+    last_weekly_monday = Column(Date, nullable=True)
+
+
 class Schedule(Base):
     __tablename__ = 'schedule'
     id = Column(Integer, primary_key=True)
