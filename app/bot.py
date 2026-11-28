@@ -477,6 +477,26 @@ class ScheduleBot:
         return chunks or ['']
 
     @staticmethod
+    def _lesson_lines(l):
+        """HTML-строки одной пары в едином оформлении для дня и недели."""
+        time_range = l.time_range
+        time_part = f' · <code>{escape(time_range)}</code>' if time_range else ''
+        lines = [
+            f'<b>{l.lesson_number} пара</b>{time_part}',
+            f'<b>{escape(l.subject or "")}</b>',
+        ]
+        if l.lesson_type:
+            lines.append(f'🏷 <i>{escape(l.lesson_type)}</i>')
+        if l.teacher:
+            lines.append(f'👤 {escape(l.teacher)}')
+        if l.location:
+            lines.append(f'📍 {escape(l.location)}')
+        if l.homework and l.homework.text:
+            # Обычная цитата не сворачивается: ДЗ остаётся сразу видно.
+            lines.append(f'📝 <b>ДЗ</b>\n<blockquote>{escape(l.homework.text)}</blockquote>')
+        return lines
+
+    @staticmethod
     def _day_schedule_lines(session, d):
         """HTML-строки расписания на конкретную дату."""
         day = day_name_for(d)
@@ -486,44 +506,38 @@ class ScheduleBot:
         items = (session.query(Schedule)
                  .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
                  .order_by(Schedule.lesson_number).all())
-        lines = [f'<b>{escape(day)}</b>, {d.strftime("%d.%m.%Y")}']
+        lines = [f'📅 <b>{escape(day)}</b> · <i>{d.strftime("%d.%m.%Y")}</i>']
         if not items:
-            lines.append('Занятий нет.')
+            lines.extend(['', '<i>Занятий нет.</i>'])
         for l in items:
-            time_part = f' ({l.time_range})' if l.time_range else ''
-            lines.append(f'\n<b>#{l.lesson_number}{time_part} {escape(l.subject or "")}</b>')
-            if l.lesson_type:
-                lines.append(f'  🏷 {escape(l.lesson_type)}')
-            if l.teacher:
-                lines.append(f'  👤 {escape(l.teacher)}')
-            if l.location:
-                lines.append(f'  📍 {escape(l.location)}')
-            if l.homework and l.homework.text:
-                lines.append(f'  📝 ДЗ: {escape(l.homework.text)}')
+            lines.append('')
+            lines.extend(ScheduleBot._lesson_lines(l))
         return lines
 
     @staticmethod
     def _week_schedule_chunks(session, monday):
         """Части HTML-текста расписания на неделю (понедельник=monday)."""
-        lines = [f'🗓 Расписание на неделю {fmt_week(monday)}']
-        for day in DAY_NAMES:
-            lines.append(f'<b>{day}</b>')
+        lines = [
+            '🗓 <b>Расписание на неделю</b>',
+            f'<i>{fmt_week(monday)}</i>',
+        ]
+        for day_index, day in enumerate(DAY_NAMES):
             items = (session.query(Schedule)
                      .filter(Schedule.period_start == monday, Schedule.day_of_week == day)
                      .order_by(Schedule.lesson_number).all())
+            day_date = monday + timedelta(days=day_index)
+            header = f'<b>{escape(day)}</b> · <i>{day_date.strftime("%d.%m")}</i>'
+            if day_index:
+                lines.extend(['', '────────────'])
+            else:
+                lines.append('')
             if not items:
-                lines.append('Занятий нет.')
+                lines.append(f'{header} — <i>занятий нет</i>')
+                continue
+            lines.append(header)
             for l in items:
-                time_part = f' ({l.time_range})' if l.time_range else ''
-                lines.append(f'\n<b>#{l.lesson_number}{time_part} {escape(l.subject or "")}</b>')
-                if l.lesson_type:
-                    lines.append(f'  🏷 {escape(l.lesson_type)}')
-                if l.teacher:
-                    lines.append(f'  👤 {escape(l.teacher)}')
-                if l.location:
-                    lines.append(f'  📍 {escape(l.location)}')
-                if l.homework and l.homework.text:
-                    lines.append(f'  📝 ДЗ: {escape(l.homework.text)}')
+                lines.append('')
+                lines.extend(ScheduleBot._lesson_lines(l))
         return ScheduleBot._split_html_chunks(lines)
 
     async def get_schedule(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
